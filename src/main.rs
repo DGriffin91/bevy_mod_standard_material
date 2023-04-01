@@ -16,7 +16,8 @@ fn main() {
             color: Color::WHITE,
             brightness: 1.0 / 5.0f32,
         })
-        .insert_resource(DirectionalLightShadowMap { size: 4096 })
+        // 2048 is default
+        .insert_resource(DirectionalLightShadowMap { size: 2048 })
         .add_plugins(DefaultPlugins.set(AssetPlugin {
             watch_for_changes: true,
             ..default()
@@ -55,12 +56,16 @@ fn setup(
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             shadows_enabled: true,
+            shadow_depth_bias: 0.02,
+            shadow_normal_bias: 1.0,
             ..default()
         },
+        cascade_shadow_config: CascadeShadowConfigBuilder::default().into(),
         ..default()
     });
     commands.spawn(SceneBundle {
         scene: asset_server.load("models/FlightHelmet/FlightHelmet.gltf#Scene0"),
+        transform: Transform::from_xyz(-1.0, 0.0, 0.0),
         ..default()
     });
 }
@@ -74,7 +79,7 @@ fn animate_light_direction(
             EulerRot::ZYX,
             0.0,
             time.elapsed_seconds() * PI / 5.0,
-            -FRAC_PI_4,
+            -FRAC_PI_4 * 0.5,
         );
     }
 }
