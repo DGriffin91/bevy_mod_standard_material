@@ -6,7 +6,8 @@
 #import bevy_pbr::clustered_forward
 #import bevy_pbr::lighting
 #import bevy_pbr::pbr_ambient
-#import bevy_pbr::shadows
+//#import bevy_pbr::shadows
+#import "shaders/shadows.wgsl"
 #import bevy_pbr::fog
 #import bevy_pbr::pbr_functions
 
