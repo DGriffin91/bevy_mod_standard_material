@@ -28,7 +28,12 @@ fn main() {
         .run();
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     commands.spawn((
         Camera3dBundle {
             transform: Transform::from_xyz(0.7, 0.7, 1.0)
@@ -40,22 +45,18 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             specular_map: asset_server.load("environment_maps/pisa_specular_rgb9e5_zstd.ktx2"),
         },
     ));
+    // plane
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(shape::Plane::from_size(10.0).into()),
+        material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
+        ..default()
+    });
 
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             shadows_enabled: true,
             ..default()
         },
-        // This is a relatively small scene, so use tighter shadow
-        // cascade bounds than the default for better quality.
-        // We also adjusted the shadow map to be larger since we're
-        // only using a single cascade.
-        cascade_shadow_config: CascadeShadowConfigBuilder {
-            num_cascades: 1,
-            maximum_distance: 1.6,
-            ..default()
-        }
-        .into(),
         ..default()
     });
     commands.spawn(SceneBundle {
