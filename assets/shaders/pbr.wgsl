@@ -6,14 +6,19 @@
 #import bevy_pbr::clustered_forward
 #import bevy_pbr::lighting
 #import bevy_pbr::pbr_ambient
+#import bevy_pbr::prepass_utils
 //#import bevy_pbr::shadows
+#import "shaders/contact_shadows.wgsl"
 #import "shaders/shadows.wgsl"
 #import bevy_pbr::fog
-#import bevy_pbr::pbr_functions
+//#import bevy_pbr::pbr_functions
+#import "shaders/pbr_functions.wgsl"
+
 
 struct FragmentInput {
     @builtin(front_facing) is_front: bool,
     @builtin(position) frag_coord: vec4<f32>,
+    @builtin(sample_index) sample_index: u32,
     #import bevy_pbr::mesh_vertex_output
 };
 
@@ -95,7 +100,7 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 
         pbr_input.flags = mesh.flags;
 
-        output_color = pbr(pbr_input);
+        output_color = pbr(pbr_input, in.sample_index);
     } else {
         output_color = alpha_discard(material, output_color);
     }

@@ -445,3 +445,46 @@ impl Material for CustomStandardMaterial {
         self.depth_bias
     }
 }
+
+pub fn swap_standard_material(
+    mut commands: Commands,
+    mut material_events: EventReader<AssetEvent<StandardMaterial>>,
+    entites: Query<(Entity, &Handle<StandardMaterial>)>,
+    standard_materials: Res<Assets<StandardMaterial>>,
+    mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
+) {
+    for event in material_events.iter() {
+        let handle = match event {
+            AssetEvent::Created { handle } => handle,
+            _ => continue,
+        };
+        if let Some(material) = standard_materials.get(handle) {
+            let custom_mat_h = custom_materials.add(CustomStandardMaterial {
+                base_color: material.base_color,
+                base_color_texture: material.base_color_texture.clone(),
+                emissive: material.emissive,
+                emissive_texture: material.emissive_texture.clone(),
+                perceptual_roughness: material.perceptual_roughness,
+                metallic: material.metallic,
+                metallic_roughness_texture: material.metallic_roughness_texture.clone(),
+                reflectance: material.reflectance,
+                normal_map_texture: material.normal_map_texture.clone(),
+                flip_normal_map_y: material.flip_normal_map_y,
+                occlusion_texture: material.occlusion_texture.clone(),
+                double_sided: material.double_sided,
+                cull_mode: material.cull_mode,
+                unlit: material.unlit,
+                fog_enabled: material.fog_enabled,
+                alpha_mode: material.alpha_mode,
+                depth_bias: material.depth_bias,
+            });
+            for (entity, entity_mat_h) in entites.iter() {
+                if entity_mat_h == handle {
+                    let mut ecmds = commands.entity(entity);
+                    ecmds.remove::<Handle<StandardMaterial>>();
+                    ecmds.insert(custom_mat_h.clone());
+                }
+            }
+        }
+    }
+}

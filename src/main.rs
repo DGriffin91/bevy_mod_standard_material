@@ -1,31 +1,38 @@
 //! Loads and renders a glTF file as a scene.
 
+mod camera_controller;
+mod load_sponza;
 mod pbr_material;
 
 use std::f32::consts::*;
 
 use bevy::{
+    core_pipeline::prepass::{DepthPrepass, NormalPrepass},
+    math::vec3,
     pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
 };
-use pbr_material::CustomStandardMaterial;
+use load_sponza::SponzaPlugin;
+use pbr_material::{swap_standard_material, CustomStandardMaterial};
 
 fn main() {
     App::new()
-        .insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 1.0 / 5.0f32,
-        })
+        .add_plugin(SponzaPlugin)
+        //.insert_resource(AmbientLight {
+        //    color: Color::WHITE,
+        //    brightness: 1.0 / 5.0f32,
+        //})
+        .insert_resource(Msaa::Off)
         // 2048 is default
-        .insert_resource(DirectionalLightShadowMap { size: 2048 })
+        //.insert_resource(DirectionalLightShadowMap { size: 2048 })
         .add_plugins(DefaultPlugins.set(AssetPlugin {
             watch_for_changes: true,
             ..default()
         }))
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
-        .add_startup_system(setup)
-        .add_system(animate_light_direction)
         .add_system(swap_standard_material)
+        //.add_startup_system(setup)
+        //.add_system(animate_light_direction)
         .run();
 }
 
@@ -45,6 +52,8 @@ fn setup(
             diffuse_map: asset_server.load("environment_maps/pisa_diffuse_rgb9e5_zstd.ktx2"),
             specular_map: asset_server.load("environment_maps/pisa_specular_rgb9e5_zstd.ktx2"),
         },
+        DepthPrepass,
+        NormalPrepass,
     ));
     // plane
     commands.spawn(PbrBundle {
@@ -61,6 +70,7 @@ fn setup(
             ..default()
         },
         cascade_shadow_config: CascadeShadowConfigBuilder::default().into(),
+        transform: Transform::IDENTITY.looking_at(vec3(1.0, -1.0, 0.5), vec3(0.0, 1.0, 0.0)),
         ..default()
     });
     commands.spawn(SceneBundle {
@@ -81,48 +91,5 @@ fn animate_light_direction(
             time.elapsed_seconds() * PI / 5.0,
             -FRAC_PI_4 * 0.5,
         );
-    }
-}
-
-fn swap_standard_material(
-    mut commands: Commands,
-    mut material_events: EventReader<AssetEvent<StandardMaterial>>,
-    entites: Query<(Entity, &Handle<StandardMaterial>)>,
-    standard_materials: Res<Assets<StandardMaterial>>,
-    mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
-) {
-    for event in material_events.iter() {
-        let handle = match event {
-            AssetEvent::Created { handle } => handle,
-            _ => continue,
-        };
-        if let Some(material) = standard_materials.get(handle) {
-            let custom_mat_h = custom_materials.add(CustomStandardMaterial {
-                base_color: material.base_color,
-                base_color_texture: material.base_color_texture.clone(),
-                emissive: material.emissive,
-                emissive_texture: material.emissive_texture.clone(),
-                perceptual_roughness: material.perceptual_roughness,
-                metallic: material.metallic,
-                metallic_roughness_texture: material.metallic_roughness_texture.clone(),
-                reflectance: material.reflectance,
-                normal_map_texture: material.normal_map_texture.clone(),
-                flip_normal_map_y: material.flip_normal_map_y,
-                occlusion_texture: material.occlusion_texture.clone(),
-                double_sided: material.double_sided,
-                cull_mode: material.cull_mode,
-                unlit: material.unlit,
-                fog_enabled: material.fog_enabled,
-                alpha_mode: material.alpha_mode,
-                depth_bias: material.depth_bias,
-            });
-            for (entity, entity_mat_h) in entites.iter() {
-                if entity_mat_h == handle {
-                    let mut ecmds = commands.entity(entity);
-                    ecmds.remove::<Handle<StandardMaterial>>();
-                    ecmds.insert(custom_mat_h.clone());
-                }
-            }
-        }
     }
 }
