@@ -228,9 +228,9 @@ fn fetch_directional_shadow(frag_coord: vec2<f32>, light_id: u32, frag_position:
             shadow = mix(shadow, next_shadow, (-view_z - next_near_bound) / (this_far_bound - next_near_bound));
         }
     }
-    shadow *= contact_shadow(frag_coord, (*light).direction_to_light.xyz, sample_index);
+    shadow *= contact_shadow(frag_coord, (*light).direction_to_light.xyz, surface_normal, sample_index);
     return shadow;
-    //return contact_shadow(frag_coord, (*light).direction_to_light.xyz, sample_index);
+    //return contact_shadow(frag_coord, (*light).direction_to_light.xyz, surface_normal, sample_index);
     //return 1.0;
 }
 

@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, num::NonZeroU8};
+use std::f32::consts::PI;
 
 use crate::camera_controller::{CameraController, CameraControllerPlugin};
 use bevy::{
@@ -169,29 +169,28 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(GrifLight);
 
     // Camera
-    commands
-        .spawn((
-            Camera3dBundle {
-                camera: Camera {
-                    hdr: true,
-                    ..default()
-                },
-                transform: Transform::from_xyz(-10.5, 1.7, -1.0)
-                    .looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
-                projection: Projection::Perspective(PerspectiveProjection {
-                    fov: std::f32::consts::PI / 3.0,
-                    near: 0.1,
-                    far: 1000.0,
-                    aspect_ratio: 1.0,
-                }),
+    commands.spawn((
+        Camera3dBundle {
+            camera: Camera {
+                hdr: true,
                 ..default()
             },
-            DepthPrepass,
-            NormalPrepass,
-            BloomSettings::NATURAL,
-        ))
-        .insert(CameraController::default().print_controls())
-        .insert(Fxaa::default());
+            transform: Transform::from_xyz(-10.5, 1.7, -1.0)
+                .looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
+            projection: Projection::Perspective(PerspectiveProjection {
+                fov: std::f32::consts::PI / 3.0,
+                near: 0.1,
+                far: 1000.0,
+                aspect_ratio: 1.0,
+            }),
+            ..default()
+        },
+        DepthPrepass,
+        NormalPrepass,
+        BloomSettings::NATURAL,
+        CameraController::default().print_controls(),
+        Fxaa::default(),
+    ));
 }
 
 pub fn all_children<F: FnMut(Entity)>(
