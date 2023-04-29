@@ -71,6 +71,11 @@ fn setup(
         transform: Transform::from_xyz(0.0, 0.0, 0.0),
         ..default()
     });
+    commands.spawn(SceneBundle {
+        scene: asset_server.load("large_models/example_trees.glb#Scene0"),
+        transform: Transform::from_xyz(0.0, 0.0, 0.0),
+        ..default()
+    });
 }
 
 fn animate_light_direction(

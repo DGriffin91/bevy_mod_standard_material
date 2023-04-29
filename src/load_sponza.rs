@@ -167,7 +167,8 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(GrifLight);
-
+    let mut bloom_settings = BloomSettings::NATURAL;
+    bloom_settings.intensity *= 0.5;
     // Camera
     commands.spawn((
         Camera3dBundle {
@@ -187,7 +188,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         DepthPrepass,
         NormalPrepass,
-        BloomSettings::NATURAL,
+        bloom_settings,
         CameraController::default().print_controls(),
         Fxaa::default(),
     ));

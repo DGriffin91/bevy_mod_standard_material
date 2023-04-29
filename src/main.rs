@@ -16,8 +16,8 @@ use pbr_material::{swap_standard_material, CustomStandardMaterial};
 
 fn main() {
     App::new()
-        //.add_plugin(SponzaPlugin)
-        .add_plugin(HelmetScenePlugin)
+        .add_plugin(SponzaPlugin)
+        //.add_plugin(HelmetScenePlugin)
         .insert_resource(Msaa::Off)
         // 2048 is default
         .insert_resource(DirectionalLightShadowMap { size: 2048 })

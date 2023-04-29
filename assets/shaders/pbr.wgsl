@@ -9,6 +9,9 @@
 #import bevy_pbr::prepass_utils
 //#import bevy_pbr::shadows
 #import "shaders/contact_shadows.wgsl"
+#import "shaders/depth_buffer_raymarching.wgsl"
+#import "shaders/contact_shadows2.wgsl"
+#import "shaders/bad_ssao.wgsl"
 #import "shaders/shadows.wgsl"
 #import bevy_pbr::fog
 //#import bevy_pbr::pbr_functions
@@ -110,6 +113,11 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
         output_color = apply_fog(output_color, in.world_position.xyz, view.world_position.xyz);
     }
 
+//    var ssao = bad_ssao(in.frag_coord.xy, in.world_normal, in.sample_index).x;
+//    ssao = ssao * ssao;
+//
+//    output_color = vec4(output_color.xyz * ssao, output_color.w);
+
 #ifdef TONEMAP_IN_SHADER
         output_color = tone_mapping(output_color);
 #endif
@@ -126,4 +134,7 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
         output_color = premultiply_alpha(material.flags, output_color);
 #endif
     return output_color;
+    //let dir_to_light = lights.directional_lights[0].direction_to_light.xyz;
+    //let shad = contact_shadow2(in.frag_coord.xy, dir_to_light, in.world_normal, in.sample_index);
+    //return ssao;
 }
