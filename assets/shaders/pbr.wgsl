@@ -5,6 +5,12 @@
 @group(1) @binding(11)
 var blue_noise_tex: texture_2d<f32>;
 const BLUE_NOISE_TEX_DIMS = vec2<u32>(64u, 64u);
+@group(1) @binding(12)
+var prev_frame_tex: texture_2d<f32>;
+@group(1) @binding(13)
+var prev_frame_sampler: sampler;
+@group(1) @binding(14)
+var next_frame: texture_storage_2d<rgba16float,write>;
 
 #import bevy_pbr::utils
 #import bevy_pbr::clustered_forward
@@ -12,10 +18,12 @@ const BLUE_NOISE_TEX_DIMS = vec2<u32>(64u, 64u);
 #import bevy_pbr::pbr_ambient
 #import bevy_pbr::prepass_utils
 //#import bevy_pbr::shadows
+#import "shaders/sampling.wgsl"
 #import "shaders/contact_shadows.wgsl"
 #import "shaders/depth_buffer_raymarching.wgsl"
 #import "shaders/contact_shadows2.wgsl"
 #import "shaders/bad_ssao.wgsl"
+#import "shaders/bad_ssgi.wgsl"
 #import "shaders/shadows.wgsl"
 #import bevy_pbr::fog
 //#import bevy_pbr::pbr_functions
@@ -137,10 +145,13 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 #ifdef PREMULTIPLY_ALPHA
         output_color = premultiply_alpha(material.flags, output_color);
 #endif
-    let shad = noise_test(in.frag_coord.xy, in.world_normal, in.sample_index);
-    return shad;
+    //let shad = noise_test(in.frag_coord.xy, in.world_normal, in.sample_index);
+    //return shad;
     //let dir_to_light = lights.directional_lights[0].direction_to_light.xyz;
     //let shad = contact_shadow2(in.frag_coord.xy, dir_to_light, in.world_normal, in.sample_index);
     //return vec4(vec3(shad.x), 1.0);
     //return vec4(vec3(ssao), 1.0);
+    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, in.frag_coord.xy / view.viewport.zw, 0.0).rgb;
+    
+    return vec4(mix(last_image, output_color.rgb, 0.01), output_color.a);
 }

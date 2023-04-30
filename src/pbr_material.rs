@@ -14,6 +14,8 @@ use bevy::{
     },
 };
 
+use crate::copy_frame::CopyFrameData;
+
 /// A material with "standard" properties used in PBR lighting
 /// Standard property values with pictures here
 /// <https://google.github.io/filament/Material%20Properties.pdf>.
@@ -238,6 +240,9 @@ pub struct CustomStandardMaterial {
 
     #[texture(11)]
     pub blue_noise: Option<Handle<Image>>,
+    #[texture(12)]
+    #[sampler(13)]
+    pub prev_image: Option<Handle<Image>>,
 }
 
 impl Default for CustomStandardMaterial {
@@ -268,6 +273,7 @@ impl Default for CustomStandardMaterial {
             alpha_mode: AlphaMode::Opaque,
             depth_bias: 0.0,
             blue_noise: None,
+            prev_image: None,
         }
     }
 }
@@ -457,6 +463,7 @@ pub fn swap_standard_material(
     standard_materials: Res<Assets<StandardMaterial>>,
     mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
     blue_noise: Res<BlueNoise>,
+    copy_frame_data: Res<CopyFrameData>,
 ) {
     for event in material_events.iter() {
         let handle = match event {
@@ -483,6 +490,7 @@ pub fn swap_standard_material(
                 alpha_mode: material.alpha_mode,
                 depth_bias: material.depth_bias,
                 blue_noise: Some(blue_noise.0.clone()),
+                prev_image: Some(copy_frame_data.image.clone()),
             });
             for (entity, entity_mat_h) in entites.iter() {
                 if entity_mat_h == handle {

@@ -245,6 +245,11 @@ fn pbr(
     // Ambient light (indirect)
     var indirect_light = ambient_light(in.world_position, in.N, in.V, NdotV, diffuse_color, F0, perceptual_roughness, occlusion);
 
+    
+    var ssgi = bad_ssgi(in.frag_coord.xy, in.world_normal, sample_index).rgb;
+
+    indirect_light += ssgi * 1.0 * diffuse_color;
+
     // Environment map light (indirect)
 #ifdef ENVIRONMENT_MAP
     let environment_light = environment_map_light(perceptual_roughness, roughness, diffuse_color, NdotV, f_ab, in.N, R, F0);

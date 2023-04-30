@@ -17,7 +17,8 @@ impl Plugin for SponzaPlugin {
         app.insert_resource(ClearColor(Color::rgb(1.75, 1.9, 1.99)))
             .insert_resource(AmbientLight {
                 color: Color::rgb(1.0, 1.0, 1.0),
-                brightness: 0.02,
+                //brightness: 0.02,
+                brightness: 0.0,
             })
             .add_plugin(CameraControllerPlugin)
             .add_startup_system(setup)
@@ -83,7 +84,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(GrifLight);
-
+    /*
     // Sun Refl
     commands
         .spawn(SpotLightBundle {
@@ -119,6 +120,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(GrifLight);
+     */
 
     // sky
     // seems to be making blocky artifacts. Even if it's the only light.
@@ -136,7 +138,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(GrifLight);
-
+    /*
     // sky refl
     commands
         .spawn(SpotLightBundle {
@@ -173,6 +175,8 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(GrifLight);
+
+    */
     let mut bloom_settings = BloomSettings::NATURAL;
     bloom_settings.intensity *= 0.35;
     // Camera

@@ -68,33 +68,6 @@ fn software_bilinear(uv: vec2<f32>, size: vec2<f32>) -> f32 {
     return mix(mix(tl, tr, f.x), mix(bl, br, f.x), f.y);
 }
 
-fn uhash(a: u32, b: u32) -> u32 { 
-    var x = ((a * 1597334673u) ^ (b * 3812015801u));
-    // from https://nullprogram.com/blog/2018/07/31/
-    x = x ^ (x >> 16u);
-    x = x * 0x7feb352du;
-    x = x ^ (x >> 15u);
-    x = x * 0x846ca68bu;
-    x = x ^ (x >> 16u);
-    return x;
-}
-
-fn unormf(n: u32) -> f32 { 
-    return f32(n) * (1.0 / f32(0xffffffffu)); 
-}
-
-fn hash_noise(ifrag_coord: vec2<i32>, frame: u32) -> f32 {
-    let urnd = uhash(u32(ifrag_coord.x), (u32(ifrag_coord.y) << 11u) + frame);
-    return unormf(urnd);
-}
-
-// https://blog.demofox.org/2022/01/01/interleaved-gradient-noise-a-different-kind-of-low-discrepancy-sequence
-fn interleaved_gradient_noise(pixel_coordinates: vec2<f32>, frame: u32) -> f32 {
-    let frame = f32(frame % 64u);
-    let xy = pixel_coordinates + 5.588238 * frame;
-    return fract(52.9829189 * fract(0.06711056 * xy.x + 0.00583715 * xy.y));
-}
-
 fn screen_fade(uv: vec2<f32>, thickness: f32, sharpness: f32) -> f32 {
     let distance_to_edge = min(uv, 1.0 - uv);
     let fade = smoothstep(vec2(0.0), vec2(thickness), distance_to_edge * sharpness);
