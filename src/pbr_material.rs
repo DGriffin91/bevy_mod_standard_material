@@ -235,6 +235,9 @@ pub struct CustomStandardMaterial {
     ///
     /// [z-fighting]: https://en.wikipedia.org/wiki/Z-fighting
     pub depth_bias: f32,
+
+    #[texture(11)]
+    pub blue_noise: Option<Handle<Image>>,
 }
 
 impl Default for CustomStandardMaterial {
@@ -264,6 +267,7 @@ impl Default for CustomStandardMaterial {
             fog_enabled: true,
             alpha_mode: AlphaMode::Opaque,
             depth_bias: 0.0,
+            blue_noise: None,
         }
     }
 }
@@ -452,6 +456,7 @@ pub fn swap_standard_material(
     entites: Query<(Entity, &Handle<StandardMaterial>)>,
     standard_materials: Res<Assets<StandardMaterial>>,
     mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
+    blue_noise: Res<BlueNoise>,
 ) {
     for event in material_events.iter() {
         let handle = match event {
@@ -477,6 +482,7 @@ pub fn swap_standard_material(
                 fog_enabled: material.fog_enabled,
                 alpha_mode: material.alpha_mode,
                 depth_bias: material.depth_bias,
+                blue_noise: Some(blue_noise.0.clone()),
             });
             for (entity, entity_mat_h) in entites.iter() {
                 if entity_mat_h == handle {
@@ -487,4 +493,11 @@ pub fn swap_standard_material(
             }
         }
     }
+}
+
+#[derive(Resource)]
+pub struct BlueNoise(pub Handle<Image>);
+
+pub fn load_blue_noise(mut commands: Commands, ass: Res<AssetServer>) {
+    commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64_s16.png")));
 }

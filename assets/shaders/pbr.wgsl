@@ -2,6 +2,10 @@
 #import bevy_pbr::pbr_bindings
 #import bevy_pbr::mesh_bindings
 
+@group(1) @binding(11)
+var blue_noise_tex: texture_2d<f32>;
+const BLUE_NOISE_TEX_DIMS = vec2<u32>(64u, 64u);
+
 #import bevy_pbr::utils
 #import bevy_pbr::clustered_forward
 #import bevy_pbr::lighting
@@ -114,7 +118,7 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     }
 
 //    var ssao = bad_ssao(in.frag_coord.xy, in.world_normal, in.sample_index).x;
-//    ssao = ssao * ssao;
+//    ssao = ssao;
 //
 //    output_color = vec4(output_color.xyz * ssao, output_color.w);
 
@@ -133,8 +137,10 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 #ifdef PREMULTIPLY_ALPHA
         output_color = premultiply_alpha(material.flags, output_color);
 #endif
-    return output_color;
+    let shad = noise_test(in.frag_coord.xy, in.world_normal, in.sample_index);
+    return shad;
     //let dir_to_light = lights.directional_lights[0].direction_to_light.xyz;
     //let shad = contact_shadow2(in.frag_coord.xy, dir_to_light, in.world_normal, in.sample_index);
-    //return ssao;
+    //return vec4(vec3(shad.x), 1.0);
+    //return vec4(vec3(ssao), 1.0);
 }

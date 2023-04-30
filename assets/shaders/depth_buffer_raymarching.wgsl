@@ -184,10 +184,10 @@ fn find_root(hrf: HybridRootFinder, drd: DepthRaymarchDistanceFn, start: vec3<f3
 
             for (var step = 1u; step < hrf.linear_steps; step += 1u) {
                 // TODO If using TAA:
-                //let candidate_t = min_t + step_size;
+                let candidate_t = min_t + step_size;
                 // TODO If not using TAA:
-                let candidate_t = min_t + step_size + step_size * interleaved_gradient_noise(cs_to_uv(candidate.xy * drd.depth_tex_size), step);
-                
+                //let candidate_t = min_t + step_size + step_size * interleaved_gradient_noise(cs_to_uv(candidate.xy * drd.depth_tex_size), step);
+
                 let candidate = start + dir * candidate_t;
                 let candidate_d = distance_fn(drd, candidate);
                 intersected = candidate_d.root.distance < 0.0 && candidate_d.root.valid;
@@ -419,6 +419,7 @@ fn march(_this_: DepthRayMarch, sample_index: u32) -> DepthRayMarchResult {
         res.hit_uv = mix(ray_start_uv, ray_end_uv, root.hit_t);
         res.hit_penetration = root.hit_d.penetration / linear_z_to_scaled_linear_z;
         res.hit_penetration_frac = root.hit_d.penetration / depth_thickness;
+        res.miss_t = root.hit_t;
         return res;
     } else {
         res.miss_t = root.hit_t;

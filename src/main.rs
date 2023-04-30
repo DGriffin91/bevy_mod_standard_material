@@ -4,6 +4,7 @@ mod camera_controller;
 mod helmet;
 mod load_sponza;
 mod pbr_material;
+mod sphere;
 
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
@@ -12,12 +13,14 @@ use bevy::{
 };
 use helmet::HelmetScenePlugin;
 use load_sponza::SponzaPlugin;
-use pbr_material::{swap_standard_material, CustomStandardMaterial};
+use pbr_material::{load_blue_noise, swap_standard_material, CustomStandardMaterial};
+use sphere::SphereScenePlugin;
 
 fn main() {
     App::new()
-        .add_plugin(SponzaPlugin)
+        //.add_plugin(SponzaPlugin)
         //.add_plugin(HelmetScenePlugin)
+        .add_plugin(SphereScenePlugin)
         .insert_resource(Msaa::Off)
         // 2048 is default
         .insert_resource(DirectionalLightShadowMap { size: 2048 })
@@ -29,5 +32,6 @@ fn main() {
         .add_system(swap_standard_material)
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
+        .add_startup_system(load_blue_noise)
         .run();
 }

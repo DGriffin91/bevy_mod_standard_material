@@ -50,6 +50,12 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .insert(PostProcScene);
 
+    commands.spawn(SceneBundle {
+        scene: asset_server.load("models/FlightHelmet/FlightHelmet.gltf#Scene0"),
+        transform: Transform::from_xyz(0.0, 0.0, -2.0),
+        ..default()
+    });
+
     // Sun
     commands
         .spawn(DirectionalLightBundle {
@@ -168,7 +174,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .insert(GrifLight);
     let mut bloom_settings = BloomSettings::NATURAL;
-    bloom_settings.intensity *= 0.5;
+    bloom_settings.intensity *= 0.35;
     // Camera
     commands.spawn((
         Camera3dBundle {

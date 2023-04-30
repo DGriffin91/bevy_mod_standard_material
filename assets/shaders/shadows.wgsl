@@ -229,7 +229,7 @@ fn fetch_directional_shadow(frag_coord: vec2<f32>, light_id: u32, frag_position:
         }
     }
     //shadow *= contact_shadow(frag_coord, (*light).direction_to_light.xyz, surface_normal, sample_index);
-    shadow *= contact_shadow2(frag_coord, (*light).direction_to_light.xyz, surface_normal, sample_index).x;
+    shadow = min(shadow, contact_shadow2(frag_coord, (*light).direction_to_light.xyz, surface_normal, sample_index).x);
     return shadow;
     //return contact_shadow2(frag_coord, (*light).direction_to_light.xyz, surface_normal, sample_index).x;
     //return 1.0;
