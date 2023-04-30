@@ -238,7 +238,7 @@ pub struct CustomStandardMaterial {
     /// [z-fighting]: https://en.wikipedia.org/wiki/Z-fighting
     pub depth_bias: f32,
 
-    #[texture(11)]
+    #[texture(11, dimension = "2d_array")]
     pub blue_noise: Option<Handle<Image>>,
     #[texture(12)]
     #[sampler(13)]
@@ -507,5 +507,6 @@ pub fn swap_standard_material(
 pub struct BlueNoise(pub Handle<Image>);
 
 pub fn load_blue_noise(mut commands: Commands, ass: Res<AssetServer>) {
-    commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64_s16.png")));
+    //commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64_s16.png")));
+    commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64.dds")));
 }

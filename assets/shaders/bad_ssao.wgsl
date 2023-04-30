@@ -13,22 +13,28 @@ fn noise_test(frag_coord: vec2<f32>, surface_normal: vec3<f32>, sample_index: u3
 //    ));
 
     var v = 0.0;
-    for (var i = 0u; i < 1u; i += 1u) {
+    var sample = 0u;
+    for (var i = 0u; i < 32u; i += 1u) {
         //var direction = uniform_sample_sphere(
         //    fract(blue_noise_for_pixel_simple(ufrag_coord) + r2_sequence(0u))
         //);
-        var direction = uniform_sample_sphere(
-            fract(hash_noise(ifrag_coord, 0u) + r2_sequence(0u))
-        );
+        var direction = uniform_sample_sphere(vec2(
+            blue_noise_for_pixel(ufrag_coord, sample),
+            blue_noise_for_pixel(ufrag_coord, sample+1u),
+        ));
+        //var direction = uniform_sample_sphere(
+        //    fract(hash_noise(ifrag_coord, 0u) + r2_sequence(0u))
+        //);
         direction = normalize(surface_normal + direction);
 
         v += dot(direction, surface_normal);
+        sample += 2u;
     }
-    v /= 1.0;
+    v /= 32.0;
 
 
     
-    let dots = f32(v > 0.98);
+    let dots = f32(v > 0.75);
 
     return vec4(vec3(dots), 1.0);
 }

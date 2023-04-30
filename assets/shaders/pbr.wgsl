@@ -3,14 +3,12 @@
 #import bevy_pbr::mesh_bindings
 
 @group(1) @binding(11)
-var blue_noise_tex: texture_2d<f32>;
-const BLUE_NOISE_TEX_DIMS = vec2<u32>(64u, 64u);
+var blue_noise_tex: texture_2d_array<f32>;
+const BLUE_NOISE_TEX_DIMS = vec3<u32>(64u, 64u, 64u);
 @group(1) @binding(12)
 var prev_frame_tex: texture_2d<f32>;
 @group(1) @binding(13)
 var prev_frame_sampler: sampler;
-@group(1) @binding(14)
-var next_frame: texture_storage_2d<rgba16float,write>;
 
 #import bevy_pbr::utils
 #import bevy_pbr::clustered_forward
@@ -24,6 +22,7 @@ var next_frame: texture_storage_2d<rgba16float,write>;
 #import "shaders/contact_shadows2.wgsl"
 #import "shaders/bad_ssao.wgsl"
 #import "shaders/bad_ssgi.wgsl"
+#import "shaders/bad_ssr.wgsl"
 #import "shaders/shadows.wgsl"
 #import bevy_pbr::fog
 //#import bevy_pbr::pbr_functions
@@ -39,6 +38,8 @@ struct FragmentInput {
 
 @fragment
 fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
+    var V = normalize(view.world_position.xyz - in.world_position.xyz);
+
     var output_color: vec4<f32> = material.base_color;
 #ifdef VERTEX_COLORS
     output_color = output_color * in.color;
@@ -116,6 +117,15 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
         pbr_input.flags = mesh.flags;
 
         output_color = pbr(pbr_input, in.sample_index);
+
+//        // BAD SSR
+//        let NdotV = max(dot(pbr_input.N, V), 0.0001);
+//        var fresnel = clamp(1.0 - NdotV, 0.0, 1.0);
+//        fresnel = pow(fresnel, 3.0);
+//
+//        var ssr = bad_ssr(in.frag_coord.xy, in.world_normal, in.sample_index).rgb;
+//        output_color = vec4(output_color.rgb + ssr * fresnel, output_color.a);
+
     } else {
         output_color = alpha_discard(material, output_color);
     }
@@ -145,13 +155,20 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 #ifdef PREMULTIPLY_ALPHA
         output_color = premultiply_alpha(material.flags, output_color);
 #endif
-    //let shad = noise_test(in.frag_coord.xy, in.world_normal, in.sample_index);
-    //return shad;
+    //return noise_test(in.frag_coord.xy, in.world_normal, in.sample_index);
     //let dir_to_light = lights.directional_lights[0].direction_to_light.xyz;
     //let shad = contact_shadow2(in.frag_coord.xy, dir_to_light, in.world_normal, in.sample_index);
     //return vec4(vec3(shad.x), 1.0);
     //return vec4(vec3(ssao), 1.0);
+
+
+
     let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, in.frag_coord.xy / view.viewport.zw, 0.0).rgb;
-    
-    return vec4(mix(last_image, output_color.rgb, 0.01), output_color.a);
+    return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
+
+//    let blue = blue_noise_for_pixel(vec2<u32>(in.frag_coord.xy), globals.frame_count % 2u);
+//    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, in.frag_coord.xy / view.viewport.zw, 0.0);
+//    return mix(last_image, vec4(vec3(f32(blue > 0.98)), 1.0), 0.1);
+
+    //return output_color;
 }

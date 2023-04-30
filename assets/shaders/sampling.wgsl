@@ -9,12 +9,12 @@ fn uniform_sample_sphere(urand: vec2<f32>) -> vec3<f32> {
     return vec3(cs * xy, sn * xy, z);
 }
 
-fn uniform_sample_disc(urand: vec2<f32>) -> vec2<f32> {
+fn uniform_sample_disc(urand: vec2<f32>) -> vec3<f32> {
     let theta = 2.0 * PI * urand.y;
-    let radius = sqrt(urand.x);
-    let x = cos(theta) * radius;
-    let y = sin(theta) * radius;
-    return vec2(x, y);
+    let r = sqrt(urand.x);
+    let x = r * cos(theta);
+    let y = r * sin(theta);
+    return vec3(x, y, 0.0);
 }
 
 const M_PLASTIC = 1.32471795724474602596;
@@ -26,20 +26,19 @@ fn r2_sequence(i: u32) -> vec2<f32> {
 }
 
 fn blue_noise_for_pixel(px: vec2<u32>, layer: u32) -> f32 {
-    let offset = vec2((layer % 8u), ((layer / 8u) % 8u)) * 8u;
-    //let offset = vec2(layer % BLUE_NOISE_TEX_DIMS.x, 0u);
-    return textureLoad(blue_noise_tex, px % BLUE_NOISE_TEX_DIMS + offset, 0).x * 255.0 / 256.0 + 0.5 / 256.0;
+    return textureLoad(blue_noise_tex, px % BLUE_NOISE_TEX_DIMS.xy, i32(layer), 0).x * 255.0 / 256.0 + 0.5 / 256.0;
 }
 
-fn blue_noise_for_pixel_r2(px: vec2<u32>, n: u32) -> f32 {
-    let offset = vec2<u32>(r2_sequence(n) * vec2<f32>(BLUE_NOISE_TEX_DIMS));
+//fn blue_noise_for_pixel_r2(px: vec2<u32>, n: u32) -> f32 {
+//    let offset = vec2<u32>(r2_sequence(n) * vec2<f32>(BLUE_NOISE_TEX_DIMS.xy));
+//    // TODO load texture as unorm not srgb
+//    return pow(textureLoad(blue_noise_tex, (px + offset) % BLUE_NOISE_TEX_DIMS.xy, 0).x, 1.0/2.2) * 255.0 / 256.0 + 0.5 / 256.0;
+//}
 
-    return textureLoad(blue_noise_tex, (px + offset) % BLUE_NOISE_TEX_DIMS, 0).x * 255.0 / 256.0 + 0.5 / 256.0;
-}
-
-fn blue_noise_for_pixel_simple(px: vec2<u32>) -> f32 {
-    return textureLoad(blue_noise_tex, px % BLUE_NOISE_TEX_DIMS, 0).x * 255.0 / 256.0 + 0.5 / 256.0;
-}
+//fn blue_noise_for_pixel_simple(px: vec2<u32>) -> f32 {
+//    // TODO load texture as unorm not srgb
+//    return pow(textureLoad(blue_noise_tex, px % BLUE_NOISE_TEX_DIMS.xy, 0).x, 1.0/2.2) * 255.0 / 256.0 + 0.5 / 256.0;
+//}
 
 fn uhash(a: u32, b: u32) -> u32 { 
     var x = ((a * 1597334673u) ^ (b * 3812015801u));

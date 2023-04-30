@@ -6,6 +6,7 @@ use bevy::{
         bloom::BloomSettings,
         fxaa::Fxaa,
         prepass::{DepthPrepass, NormalPrepass},
+        tonemapping::Tonemapping,
     },
     pbr::CascadeShadowConfigBuilder,
     prelude::*,
@@ -120,7 +121,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(GrifLight);
-     */
+
 
     // sky
     // seems to be making blocky artifacts. Even if it's the only light.
@@ -138,7 +139,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(GrifLight);
-    /*
+
     // sky refl
     commands
         .spawn(SpotLightBundle {
@@ -186,6 +187,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 hdr: true,
                 ..default()
             },
+            tonemapping: Tonemapping::TonyMcMapface,
             transform: Transform::from_xyz(-10.5, 1.7, -1.0)
                 .looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
             projection: Projection::Perspective(PerspectiveProjection {
