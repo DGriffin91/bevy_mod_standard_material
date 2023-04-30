@@ -91,9 +91,12 @@ fn distance_fn(_this_: DepthRaymarchDistanceFn, ray_point_cs: vec3<f32>) -> Dist
     
     let linear_depth = 1.0 / bilinear_depth(interp_uv, _this_.depth_tex_size, _this_.sample_index);
     let unfiltered_depth = 1.0 / prepass_depth(vec4<f32>(interp_uv * _this_.depth_tex_size, 0.0, 0.0), _this_.sample_index);
-    
+
     let max_depth = max(linear_depth, unfiltered_depth);
     let min_depth = min(linear_depth, unfiltered_depth);
+    // Just for sanity checking. Should not be used.
+    //max_depth = unfiltered_depth;
+    //min_depth = unfiltered_depth;
 
     let bias = 0.000001;
     
@@ -211,7 +214,7 @@ fn find_root(hrf: HybridRootFinder, drd: DepthRaymarchDistanceFn, start: vec3<f3
 
     if (intersected) {
         for (var step = 0u; step < hrf.bisection_steps; step += 1u) {
-            var mid_t = (min_t + max_t) * 0.5;
+            let mid_t = (min_t + max_t) * 0.5;
             let candidate = start + dir * mid_t;
             let candidate_d = distance_fn(drd, candidate);
 
@@ -228,9 +231,25 @@ fn find_root(hrf: HybridRootFinder, drd: DepthRaymarchDistanceFn, start: vec3<f3
 
         if (hrf.use_secant) {
             // Finish with one application of the secant method
-            res.hit_t = max_t - (max_d.root.distance * (max_t - min_t)) / (max_d.root.distance - min_d.root.distance);
-            res.hit_d = distance_fn(drd, start + dir * res.hit_t);
-            res.intersected = res.hit_d.root.valid;
+            let total_d = min_d.root.distance + -max_d.root.distance;
+
+            let mid_t = mix(min_t, max_t, min_d.root.distance / total_d);
+            let candidate = start + dir * mid_t;
+            let candidate_d = distance_fn(drd, candidate);
+
+            // Only accept the result of the secant method if it improves upon the previous result.
+            //
+            // Technically this should be `abs(candidate_d.distance) < min(min_d.distance, -max_d.distance) * frac`,
+            // but this seems sufficient.
+            if (abs(candidate_d.root.distance) < min_d.root.distance * 0.9 && candidate_d.root.valid) {
+                res.hit_t = mid_t;
+                res.hit_d = candidate_d;
+            } else {
+                res.hit_t = max_t;
+                res.hit_d = max_d;
+            }
+
+            res.intersected = true;
             return res;
         } else {
             res.hit_t = max_t;
@@ -257,9 +276,13 @@ struct DepthRayMarchResult {
     /// Ditto, within the range `0..DepthRayMarch::depth_thickness_linear_z`
     hit_penetration_frac: f32,
 
-    /// If a miss is reported, this is the furthest the ray managed to get.
+    /// In case of a hit, the normalized distance to it.
+    ///
+    /// In case of a miss, the furthest the ray managed to travel, which could either be
+    /// exceeding the max range, or getting behind a surface further than the depth thickness.
+    ///
     /// Range: `0..=1` as a lerp factor over `ray_start_cs..=ray_end_cs`.
-    miss_t: f32,
+    hit_t: f32,
 
     /// True if the raymarch hit something.
     hit: bool,
@@ -413,16 +436,15 @@ fn march(_this_: DepthRayMarch, sample_index: u32) -> DepthRayMarchResult {
     hybrid_root_finder.use_secant = _this_.use_secant;
     hybrid_root_finder.jitter = _this_.jitter;
     let root = find_root(hybrid_root_finder, distance_fn, _this_.ray_start_cs, _this_.ray_end_cs);
-
+    
+    res.hit_t = root.hit_t;
     if (root.intersected && root.hit_d.penetration < depth_thickness && root.hit_d.root.distance < depth_thickness) {
         res.hit = true;
         res.hit_uv = mix(ray_start_uv, ray_end_uv, root.hit_t);
         res.hit_penetration = root.hit_d.penetration / linear_z_to_scaled_linear_z;
         res.hit_penetration_frac = root.hit_d.penetration / depth_thickness;
-        res.miss_t = root.hit_t;
+        res.hit_t = root.hit_t;
         return res;
-    } else {
-        res.miss_t = root.hit_t;
     }
 
     return res;

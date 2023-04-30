@@ -104,7 +104,7 @@ fn bad_ssao(frag_coord: vec2<f32>, surface_normal: vec3<f32>, sample_index: u32)
         let raymarch_result = march(rmr, sample_index);
         var shadow = 0.0;
         if (raymarch_result.hit) {
-            tot += smoothstep(1.0, 0.0, raymarch_result.miss_t);
+            tot += smoothstep(1.0, 0.0, raymarch_result.hit_t);
         }
     }
     tot /= 4.0;
