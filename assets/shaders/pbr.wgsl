@@ -158,9 +158,11 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     //return vec4(vec3(ssao), 1.0);
 
 
+    let closest_motion_vector = prepass_motion_vector(in.frag_coord, 0u).xy;
+    let history_uv = (in.frag_coord.xy / view.viewport.zw) - closest_motion_vector;
 
-    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, in.frag_coord.xy / view.viewport.zw, 0.0).rgb;
-    return vec4(mix(last_image, output_color.rgb, 0.1), output_color.a);
+    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
+    return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
 
     
 

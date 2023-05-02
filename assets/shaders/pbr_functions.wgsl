@@ -248,7 +248,6 @@ fn pbr(
     // BAD SSGI
     var ssgi = bad_ssgi(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
     indirect_light += ssgi * diffuse_color;
-
     
     // BAD SSR
     var ssr = bad_ssr(in.frag_coord, normalize(in.N), in.world_position.xyz, roughness, F0, sample_index).rgb;

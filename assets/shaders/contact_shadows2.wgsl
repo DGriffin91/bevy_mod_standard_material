@@ -16,7 +16,7 @@ fn contact_shadow2(frag_coord: vec2<f32>, dir_to_light: vec3<f32>, surface_norma
     dmr.ray_start_cs = vec3(uv_to_cs(screen_uv), depth);
     dmr = to_ws(dmr, ray_hit_ws + dir_to_light * distance);
     //dmr = to_ws_dir(dmr, dir_to_light);
-    dmr.linear_steps = 8u;
+    dmr.linear_steps = 6u;
     dmr.depth_thickness_linear_z = 0.5;
     dmr.jitter = interleaved_gradient_noise(frag_coord, globals.frame_count);
     dmr.march_behind_surfaces = true;

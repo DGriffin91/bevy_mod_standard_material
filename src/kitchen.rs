@@ -7,12 +7,14 @@ use crate::{
 use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
+        experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasSettings},
         fxaa::Fxaa,
-        prepass::{DepthPrepass, NormalPrepass},
+        prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
     pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
+    render::camera::TemporalJitter,
 };
 
 pub struct KitchenPlugin;
@@ -114,13 +116,20 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             }),
             ..default()
         },
-        DepthPrepass,
+        //DepthPrepass,
         NormalPrepass,
+        //MotionVectorPrepass,
         bloom_settings,
         CameraController {
             walk_speed: 1.0,
             ..default()
         },
-        Fxaa::default(),
+        TemporalAntiAliasBundle::default(),
+        // {
+        //    settings: TemporalAntiAliasSettings { reset: true },
+        //    jitter: TemporalJitter { offset: Vec2::ZERO },
+        //    depth_prepass: DepthPrepass,
+        //    motion_vector_prepass: MotionVectorPrepass,
+        //},
     ));
 }

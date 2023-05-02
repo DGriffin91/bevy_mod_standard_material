@@ -9,6 +9,7 @@ mod pbr_material;
 mod sphere;
 
 use bevy::{
+    core_pipeline::experimental::taa::TemporalAntiAliasPlugin,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     pbr::DirectionalLightShadowMap,
     prelude::*,
@@ -38,6 +39,7 @@ fn main() {
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(CopyFramePlugin)
+        .add_plugin(TemporalAntiAliasPlugin)
         .add_startup_system(load_blue_noise)
         .run();
 }
