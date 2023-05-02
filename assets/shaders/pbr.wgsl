@@ -39,6 +39,7 @@ struct FragmentInput {
 @fragment
 fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     var V = normalize(view.world_position.xyz - in.world_position.xyz);
+    var N = vec3(0.0);
 
     var output_color: vec4<f32> = material.base_color;
 #ifdef VERTEX_COLORS
@@ -111,20 +112,15 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
             in.uv,
 #endif
         );
+
+        N = in.world_normal;
+
         pbr_input.V = calculate_view(in.world_position, pbr_input.is_orthographic);
         pbr_input.occlusion = occlusion;
 
         pbr_input.flags = mesh.flags;
 
         output_color = pbr(pbr_input, in.sample_index);
-
-//        // BAD SSR
-//        let NdotV = max(dot(pbr_input.N, V), 0.0001);
-//        var fresnel = clamp(1.0 - NdotV, 0.0, 1.0);
-//        fresnel = pow(fresnel, 3.0);
-//
-//        var ssr = bad_ssr(in.frag_coord.xy, in.world_normal, in.sample_index).rgb;
-//        output_color = vec4(output_color.rgb + ssr * fresnel, output_color.a);
 
     } else {
         output_color = alpha_discard(material, output_color);
@@ -155,7 +151,7 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 #ifdef PREMULTIPLY_ALPHA
         output_color = premultiply_alpha(material.flags, output_color);
 #endif
-    //return noise_test(in.frag_coord.xy, in.world_normal, in.sample_index);
+    //return noise_test(in.frag_coord.xy, normalize(in.world_normal), in.sample_index);
     //let dir_to_light = lights.directional_lights[0].direction_to_light.xyz;
     //let shad = contact_shadow2(in.frag_coord.xy, dir_to_light, in.world_normal, in.sample_index);
     //return vec4(vec3(shad.x), 1.0);
@@ -164,7 +160,10 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 
 
     let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, in.frag_coord.xy / view.viewport.zw, 0.0).rgb;
-    return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
+    return vec4(mix(last_image, output_color.rgb, 0.005), output_color.a);
+
+    
+
 
 //    let blue = blue_noise_for_pixel(vec2<u32>(in.frag_coord.xy), globals.frame_count % 2u);
 //    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, in.frag_coord.xy / view.viewport.zw, 0.0);

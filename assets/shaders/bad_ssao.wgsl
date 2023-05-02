@@ -12,29 +12,36 @@ fn noise_test(frag_coord: vec2<f32>, surface_normal: vec3<f32>, sample_index: u3
 //        blue_noise_for_pixel_r2(ufrag_coord, 1u),
 //    ));
 
+    let TBN = build_orthonormal_basis(surface_normal);
     var v = 0.0;
     var sample = 0u;
-    for (var i = 0u; i < 32u; i += 1u) {
+    for (var i = 0u; i < 1u; i += 1u) {
         //var direction = uniform_sample_sphere(
         //    fract(blue_noise_for_pixel_simple(ufrag_coord) + r2_sequence(0u))
         //);
-        var direction = uniform_sample_sphere(vec2(
+        //var direction = uniform_sample_sphere(vec2(
+        //    blue_noise_for_pixel(ufrag_coord, sample),
+        //    blue_noise_for_pixel(ufrag_coord, sample+1u),
+        //));
+        var direction = cosine_sample_hemisphere(vec2(
             blue_noise_for_pixel(ufrag_coord, sample),
             blue_noise_for_pixel(ufrag_coord, sample+1u),
         ));
+
+        direction = direction * TBN;
         //var direction = uniform_sample_sphere(
         //    fract(hash_noise(ifrag_coord, 0u) + r2_sequence(0u))
         //);
-        direction = normalize(surface_normal + direction);
+        //direction = normalize(surface_normal + direction);
 
         v += dot(direction, surface_normal);
         sample += 2u;
     }
-    v /= 32.0;
+    v /= 1.0;
 
 
     
-    let dots = f32(v > 0.75);
+    let dots = f32(v > 0.99);
 
     return vec4(vec3(dots), 1.0);
 }
@@ -44,6 +51,7 @@ fn bad_ssao(frag_coord: vec2<f32>, surface_normal: vec3<f32>, sample_index: u32)
     let ufrag_coord = vec2<u32>(frag_coord);
     let depth_tex_dims = vec2<f32>(textureDimensions(depth_prepass_texture));
     let screen_uv = frag_coord / depth_tex_dims;
+    // TODO just use in.world_position
     let depth = get_depth(screen_uv, sample_index);
     let ray_hit_ws = position_from_uv(screen_uv, depth); // + normal_bias_offset
 

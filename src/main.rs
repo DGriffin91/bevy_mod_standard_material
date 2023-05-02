@@ -3,6 +3,7 @@
 mod camera_controller;
 mod copy_frame;
 mod helmet;
+mod kitchen;
 mod load_sponza;
 mod pbr_material;
 mod sphere;
@@ -14,13 +15,15 @@ use bevy::{
 };
 use copy_frame::CopyFramePlugin;
 use helmet::HelmetScenePlugin;
+use kitchen::KitchenPlugin;
 use load_sponza::SponzaPlugin;
 use pbr_material::{load_blue_noise, swap_standard_material, CustomStandardMaterial};
 use sphere::SphereScenePlugin;
 
 fn main() {
     App::new()
-        .add_plugin(SponzaPlugin)
+        .add_plugin(KitchenPlugin)
+        //.add_plugin(SponzaPlugin)
         //.add_plugin(HelmetScenePlugin)
         //.add_plugin(SphereScenePlugin)
         .insert_resource(Msaa::Off)

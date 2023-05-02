@@ -2,7 +2,7 @@ fn contact_shadow2(frag_coord: vec2<f32>, dir_to_light: vec3<f32>, surface_norma
     let depth_tex_dims = vec2<f32>(textureDimensions(depth_prepass_texture));
     let screen_uv = frag_coord / depth_tex_dims;
 
-    var distance = 0.18;
+    var distance = 0.15;
 
     let depth = get_depth(screen_uv, sample_index);
     let ray_hit_ws = position_from_uv(screen_uv, depth); // + normal_bias_offset
@@ -16,9 +16,9 @@ fn contact_shadow2(frag_coord: vec2<f32>, dir_to_light: vec3<f32>, surface_norma
     dmr.ray_start_cs = vec3(uv_to_cs(screen_uv), depth);
     dmr = to_ws(dmr, ray_hit_ws + dir_to_light * distance);
     //dmr = to_ws_dir(dmr, dir_to_light);
-    dmr.linear_steps = 5u;
-    dmr.depth_thickness_linear_z = 0.18;
-    dmr.jitter = 1.0;
+    dmr.linear_steps = 8u;
+    dmr.depth_thickness_linear_z = 0.5;
+    dmr.jitter = interleaved_gradient_noise(frag_coord, globals.frame_count);
     dmr.march_behind_surfaces = true;
     let raymarch_result = march(dmr, sample_index);
     var shadow = 0.0;

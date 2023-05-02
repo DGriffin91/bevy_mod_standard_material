@@ -406,7 +406,6 @@ fn to_ws_dir(_this_: DepthRayMarch, dir: vec3<f32>) -> DepthRayMarch {
     return to_cs_dir_impl(_this_, clipSpace, true);
 }
 
-
 /// Perform the ray march.
 fn march(_this_: DepthRayMarch, sample_index: u32) -> DepthRayMarchResult {
     var res: DepthRayMarchResult;
@@ -448,4 +447,16 @@ fn march(_this_: DepthRayMarch, sample_index: u32) -> DepthRayMarchResult {
     }
 
     return res;
+}
+
+/// Convert clip space coordinate to world space
+fn conv_pos_cs_to_ws(cs_pos: vec3<f32>) -> vec3<f32> {
+    let ws = view.inverse_view_proj * vec4(cs_pos, 1.0);
+    return ws.xyz / ws.w;
+}
+
+/// Convert world space coordinate to clip space
+fn conv_pos_ws_to_cs(ws_pos: vec3<f32>) -> vec3<f32> {
+    let cs = view.view_proj * vec4(ws_pos, 1.0);
+    return cs.xyz / cs.w;
 }

@@ -201,7 +201,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         DepthPrepass,
         NormalPrepass,
         bloom_settings,
-        CameraController::default().print_controls(),
+        CameraController {
+            walk_speed: 1.0,
+            ..default()
+        },
         Fxaa::default(),
     ));
 }
