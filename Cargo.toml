@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.10", features = ["dds", "jpeg"] }
+bevy = { git = "https://github.com/bevyengine/bevy", commit = "a29d328fe5cd4d6a5ec3dfd39e97e8e24409c0f3", features = ["dds", "jpeg"] }
 
 # Enable only a small amount of optimization in debug mode
 [profile.dev]

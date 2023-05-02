@@ -32,7 +32,7 @@ var prev_frame_sampler: sampler;
 struct FragmentInput {
     @builtin(front_facing) is_front: bool,
     @builtin(position) frag_coord: vec4<f32>,
-    @builtin(sample_index) sample_index: u32,
+    //@builtin(sample_index) sample_index: u32,
     #import bevy_pbr::mesh_vertex_output
 };
 
@@ -120,7 +120,7 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 
         pbr_input.flags = mesh.flags;
 
-        output_color = pbr(pbr_input, in.sample_index);
+        output_color = pbr(pbr_input, 0u);
 
     } else {
         output_color = alpha_discard(material, output_color);
@@ -160,7 +160,7 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 
 
     let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, in.frag_coord.xy / view.viewport.zw, 0.0).rgb;
-    return vec4(mix(last_image, output_color.rgb, 0.005), output_color.a);
+    return vec4(mix(last_image, output_color.rgb, 0.1), output_color.a);
 
     
 

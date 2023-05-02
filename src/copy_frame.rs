@@ -5,7 +5,9 @@ use bevy::{
     render::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::RenderAssets,
-        render_graph::{Node, NodeRunError, RenderGraph, RenderGraphContext, SlotInfo, SlotType},
+        render_graph::{
+            Node, NodeRunError, RenderGraph, RenderGraphApp, RenderGraphContext, SlotInfo, SlotType,
+        },
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
             BindGroupLayoutEntry, BindingResource, BindingType, CachedRenderPipelineId,
@@ -32,22 +34,38 @@ impl Plugin for CopyFramePlugin {
             .add_plugin(ExtractResourcePlugin::<CopyFrameData>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
-            return;
-        };
+                    return;
+                };
 
-        render_app.init_resource::<PostProcessPipeline>();
-        let node = FrameCopyNode::new(&mut render_app.world);
-        let mut graph = render_app.world.resource_mut::<RenderGraph>();
-        let core_3d_graph = graph.get_sub_graph_mut(core_3d::graph::NAME).unwrap();
-        core_3d_graph.add_node(FrameCopyNode::NAME, node);
-        core_3d_graph.add_slot_edge(
-            core_3d_graph.input_node().id,
-            core_3d::graph::input::VIEW_ENTITY,
-            FrameCopyNode::NAME,
-            FrameCopyNode::IN_VIEW,
-        );
-        core_3d_graph.add_node_edge(core_3d::graph::node::MAIN_PASS, FrameCopyNode::NAME);
-        core_3d_graph.add_node_edge(FrameCopyNode::NAME, core_3d::graph::node::BLOOM);
+        render_app
+            // Initialize the pipeline
+            .init_resource::<PostProcessPipeline>()
+            // Bevy's renderer uses a render graph which is a collection of nodes in a directed acyclic graph.
+            // It currently runs on each view/camera and executes each node in the specified order.
+            // It will make sure that any node that needs a dependency from another node
+            // only runs when that dependency is done.
+            //
+            // Each node can execute arbitrary work, but it generally runs at least one render pass.
+            // A node only has access to the render world, so if you need data from the main world
+            // you need to extract it manually or with the plugin like above.
+            // Add a [`Node`] to the [`RenderGraph`]
+            // The Node needs to impl FromWorld
+            .add_render_graph_node::<FrameCopyNode>(
+                // Specifiy the name of the graph, in this case we want the graph for 3d
+                core_3d::graph::NAME,
+                // It also needs the name of the node
+                FrameCopyNode::NAME,
+            )
+            .add_render_graph_edges(
+                core_3d::graph::NAME,
+                // Specify the node ordering.
+                // This will automatically create all required node edges to enforce the given ordering.
+                &[
+                    core_3d::graph::node::MAIN_TRANSPARENT_PASS,
+                    FrameCopyNode::NAME,
+                    core_3d::graph::node::BLOOM,
+                ],
+            );
     }
 }
 
@@ -55,23 +73,25 @@ struct FrameCopyNode {
     query: QueryState<&'static ViewTarget, With<ExtractedView>>,
 }
 
-impl FrameCopyNode {
-    pub const IN_VIEW: &str = "view";
-    pub const NAME: &str = "post_process";
-
-    fn new(world: &mut World) -> Self {
+impl FromWorld for FrameCopyNode {
+    fn from_world(world: &mut World) -> Self {
         Self {
             query: QueryState::new(world),
         }
     }
 }
 
-impl Node for FrameCopyNode {
-    fn input(&self) -> Vec<SlotInfo> {
-        vec![SlotInfo::new(FrameCopyNode::IN_VIEW, SlotType::Entity)]
-    }
+impl FrameCopyNode {
+    pub const NAME: &str = "copy_frame";
+}
 
+impl Node for FrameCopyNode {
+    // This will run every frame before the run() method
+    // The important difference is that `self` is `mut` here
     fn update(&mut self, world: &mut World) {
+        // Since this is not a system we need to update the query manually.
+        // This is mostly boilerplate. There are plans to remove this in the future.
+        // For now, you can just copy it.
         self.query.update_archetypes(world);
     }
 
@@ -81,7 +101,8 @@ impl Node for FrameCopyNode {
         render_context: &mut RenderContext,
         world: &World,
     ) -> Result<(), NodeRunError> {
-        let view_entity = graph_context.get_input_entity(FrameCopyNode::IN_VIEW)?;
+        // Get the entity of the view for the render graph where this node is running
+        let view_entity = graph_context.view_entity();
 
         let Ok(view_target) = self.query.get_manual(world, view_entity) else {
             return Ok(());
