@@ -22,7 +22,10 @@ var prev_frame_sampler: sampler;
 #import "shaders/contact_shadows2.wgsl"
 #import "shaders/bad_ssao.wgsl"
 #import "shaders/bad_ssgi.wgsl"
+#import "shaders/really_bad_ssgi.wgsl"
 #import "shaders/bad_ssr.wgsl"
+#import "shaders/gtao_utils.wgsl"
+#import "shaders/bad_gtao.wgsl"
 #import "shaders/shadows.wgsl"
 #import bevy_pbr::fog
 //#import bevy_pbr::pbr_functions
@@ -131,10 +134,9 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
         output_color = apply_fog(output_color, in.world_position.xyz, view.world_position.xyz);
     }
 
-//    var ssao = bad_ssao(in.frag_coord.xy, in.world_normal, in.sample_index).x;
-//    ssao = ssao;
-//
-//    output_color = vec4(output_color.xyz * ssao, output_color.w);
+    //var ssao = bad_ssao(in.frag_coord.xy, in.world_normal, 0u);
+    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal);
+    output_color = ssao;//vec4(ssao, output_color.w);
 
 #ifdef TONEMAP_IN_SHADER
         output_color = tone_mapping(output_color);
@@ -166,10 +168,7 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 
     
 
-
 //    let blue = blue_noise_for_pixel(vec2<u32>(in.frag_coord.xy), globals.frame_count % 2u);
 //    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, in.frag_coord.xy / view.viewport.zw, 0.0);
 //    return mix(last_image, vec4(vec3(f32(blue > 0.98)), 1.0), 0.1);
-
-    //return output_color;
 }

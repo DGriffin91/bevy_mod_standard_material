@@ -45,6 +45,7 @@ struct DepthRaymarchDistanceFn {
     sample_index: u32,
     depth_thickness: f32,
     march_behind_surfaces: bool,
+    use_bilinear: bool,
 }
 
 // Returns: penetration 
@@ -89,14 +90,20 @@ fn distance_fn(_this_: DepthRaymarchDistanceFn, ray_point_cs: vec3<f32>) -> Dist
     //     frac_px.y
     // );
     
-    let linear_depth = 1.0 / bilinear_depth(interp_uv, _this_.depth_tex_size, _this_.sample_index);
+
     let unfiltered_depth = 1.0 / prepass_depth(vec4<f32>(interp_uv * _this_.depth_tex_size, 0.0, 0.0), _this_.sample_index);
 
-    let max_depth = max(linear_depth, unfiltered_depth);
-    let min_depth = min(linear_depth, unfiltered_depth);
+    var max_depth = unfiltered_depth;
+    var min_depth = unfiltered_depth;
+
+    if _this_.use_bilinear {
+        let linear_depth = 1.0 / bilinear_depth(interp_uv, _this_.depth_tex_size, _this_.sample_index);
+
+        max_depth = max(linear_depth, unfiltered_depth);
+        min_depth = min(linear_depth, unfiltered_depth);
+    }
+
     // Just for sanity checking. Should not be used.
-    //max_depth = unfiltered_depth;
-    //min_depth = unfiltered_depth;
 
     let bias = 0.000001;
     
@@ -293,6 +300,9 @@ struct DepthRayMarch {
     /// Must not be zero.
     linear_steps: u32,
 
+    /// Use bilinear-filtered values from the depth buffer. Should usually be enabled.
+    use_bilinear: bool,
+
     /// Number of steps in a bisection (binary search) to perform once the linear search
     /// has found an intersection. Helps narrow down the hit, increasing the chance of
     /// the secant method finding an accurate hit point.
@@ -343,6 +353,7 @@ fn DepthRayMarch_new_from_depth(depth_tex_size: vec2<f32>) -> DepthRayMarch {
     res.depth_tex_size = depth_tex_size;
     res.depth_thickness_linear_z = 1.0;
     res.march_behind_surfaces = false;
+    res.use_bilinear = true;
     return res;
 }
 
@@ -428,6 +439,7 @@ fn march(_this_: DepthRayMarch, sample_index: u32) -> DepthRayMarchResult {
     distance_fn.depth_tex_size = _this_.depth_tex_size;
     distance_fn.march_behind_surfaces = _this_.march_behind_surfaces;
     distance_fn.depth_thickness = depth_thickness;
+    distance_fn.use_bilinear = _this_.use_bilinear;
 
 
     var hybrid_root_finder = new_with_linear_steps(step_count);

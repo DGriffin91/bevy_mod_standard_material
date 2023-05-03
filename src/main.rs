@@ -13,6 +13,7 @@ use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     pbr::DirectionalLightShadowMap,
     prelude::*,
+    window::PresentMode,
 };
 use copy_frame::CopyFramePlugin;
 use helmet::HelmetScenePlugin;
@@ -30,10 +31,20 @@ fn main() {
         .insert_resource(Msaa::Off)
         // 2048 is default
         .insert_resource(DirectionalLightShadowMap { size: 2048 })
-        .add_plugins(DefaultPlugins.set(AssetPlugin {
-            watch_for_changes: true,
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(AssetPlugin {
+                    watch_for_changes: true,
+                    ..default()
+                })
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        present_mode: PresentMode::Immediate,
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
         .add_system(swap_standard_material)
         .add_plugin(LogDiagnosticsPlugin::default())

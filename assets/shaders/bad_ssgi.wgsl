@@ -1,17 +1,18 @@
-// A Ray-Box Intersection Algorithm and Efficient Dynamic Voxel Rendering
-// Alexander Majercik, Cyril Crassin, Peter Shirley, and Morgan McGuire
-fn slabs(origin: vec3<f32>, direction: vec3<f32>, minv: vec3<f32>, maxv: vec3<f32>) -> bool {
-    let t0 = (minv - origin) / direction;
-    let t1 = (maxv - origin) / direction;
-
-    let tmin = min(t0, t1);
-    let tmax = max(t0, t1);
-
-    return max(tmin.x, max(tmin.y, tmin.z)) <= min(tmax.x, min(tmax.y, tmax.z));
-}
 
 fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: vec3<f32>, sample_index: u32) -> vec4<f32> {
-    let samples = 8u;
+    let samples = 6u;
+    let linear_steps = 8u;
+    let bisection_steps = 4u;
+    let depth_thickness = 1.5;
+    let trace_dist = 8.0;
+
+    // Kitchen opt
+    //let samples = 8u;
+    //let linear_steps = 2u;
+    //let bisection_steps = 2u;
+    //let depth_thickness = 1.5;
+    //let trace_dist = 7.0;
+
     let surface_normal = normalize(surface_normal);
     let ifrag_coord = vec2<i32>(frag_coord.xy);
     let ufrag_coord = vec2<u32>(frag_coord.xy);
@@ -20,16 +21,27 @@ fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: ve
     let screen_uv = frag_coord.xy * px_size;
     let depth = frag_coord.z;
 
-
-    let white_frame_noise = vec3(
-        hash_noise(vec2(0), globals.frame_count), 
-        hash_noise(vec2(1), globals.frame_count + 1024u),
-        hash_noise(vec2(2), globals.frame_count + 2048u)
-    );
-
     let TBN = build_orthonormal_basis(surface_normal);
     var tot = vec3(0.0);
+
+    let white_frame_noise = vec3(
+        hash_noise(vec2(0), globals.frame_count + 0u), 
+        hash_noise(vec2(1), globals.frame_count + 1u),
+        hash_noise(vec2(2), globals.frame_count + 2u)
+    );
+
+    var dmr = DepthRayMarch_new_from_depth(depth_tex_dims);
+    dmr.ray_start_cs = vec3(uv_to_cs(screen_uv), depth);
+    dmr.linear_steps = linear_steps;
+    dmr.depth_thickness_linear_z = depth_thickness;
+    dmr.march_behind_surfaces = false;
+    dmr.use_secant = true;
+    dmr.bisection_steps = bisection_steps;
+
     for (var i = 0u; i < samples; i += 1u) {
+        let seed = i * samples + globals.frame_count * samples;
+
+        
 //        var direction = cosine_sample_hemisphere(vec2(
 //            hash_noise(ifrag_coord, i + globals.frame_count),
 //            hash_noise(ifrag_coord, i + 64u * 64u + globals.frame_count)
@@ -41,9 +53,17 @@ fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: ve
 //        direction = normalize(surface_normal + direction);
 
         var direction = cosine_sample_hemisphere(vec2(
-            fract(blue_noise_for_pixel(ufrag_coord, i * samples + 0u + globals.frame_count * samples) + white_frame_noise.x),
-            fract(blue_noise_for_pixel(ufrag_coord, i * samples + 1u + globals.frame_count * samples) + white_frame_noise.y),
+            fract(blue_noise_for_pixel(ufrag_coord, seed + 0u) + white_frame_noise.x),
+            fract(blue_noise_for_pixel(ufrag_coord, seed + 1u) + white_frame_noise.y),
         ));
+
+        //var direction = cosine_sample_hemisphere(vec2(
+        //    hash_noise(ifrag_coord, seed + 0u),
+        //    hash_noise(ifrag_coord, seed + 1u),
+        //));
+
+        let jitter = fract(blue_noise_for_pixel(ufrag_coord, seed + 2u) + white_frame_noise.z);
+        //let jitter = hash_noise(ifrag_coord, seed + 2u);
 
         
 //        var direction = cosine_sample_hemisphere(vec2(
@@ -53,20 +73,10 @@ fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: ve
         
         direction = normalize(direction * TBN);
 
-        let trace_dist = 8.0;
         let ray_end_ws = world_position + direction * trace_dist;
 
-        var dmr = DepthRayMarch_new_from_depth(depth_tex_dims);
-        dmr.ray_start_cs = vec3(uv_to_cs(screen_uv), depth);
         dmr = to_ws(dmr, ray_end_ws);
-        //dmr = to_ws_dir(dmr, direction);
-        dmr.linear_steps = 8u;
-        dmr.depth_thickness_linear_z = 1.5;
-        //interleaved_gradient_noise(frag_coord, globals.frame_count);
-        dmr.jitter = fract(blue_noise_for_pixel(ufrag_coord, i * samples + 2u + globals.frame_count * samples) + white_frame_noise.z);
-        dmr.march_behind_surfaces = false;
-        dmr.use_secant = true;
-        dmr.bisection_steps = 4u;
+        dmr.jitter = jitter;
         
         let raymarch_result = march(dmr, sample_index);
         var shadow = 0.0;

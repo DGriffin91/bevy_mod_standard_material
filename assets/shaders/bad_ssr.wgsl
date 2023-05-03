@@ -1,5 +1,5 @@
 fn bad_ssr(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: vec3<f32>, roughness: f32, albedo: vec3<f32>, sample_index: u32) -> vec4<f32> {
-    let samples = 3u;
+    let samples = 2u;
     let surface_normal = normalize(surface_normal);
     let raymarch_distance = 20.0;
     let linear_sample_count = 16u;
