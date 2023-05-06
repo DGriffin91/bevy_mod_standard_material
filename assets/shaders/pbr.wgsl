@@ -2,6 +2,8 @@
 #import bevy_pbr::pbr_bindings
 #import bevy_pbr::mesh_bindings
 
+#import bevy_coordinate_systems::transformations
+
 @group(1) @binding(11)
 var blue_noise_tex: texture_2d_array<f32>;
 const BLUE_NOISE_TEX_DIMS = vec3<u32>(64u, 64u, 64u);
@@ -20,11 +22,11 @@ var prev_frame_sampler: sampler;
 #import "shaders/contact_shadows.wgsl"
 #import "shaders/depth_buffer_raymarching.wgsl"
 #import "shaders/contact_shadows2.wgsl"
+#import "shaders/gtao_utils.wgsl"
 #import "shaders/bad_ssao.wgsl"
 #import "shaders/bad_ssgi.wgsl"
 #import "shaders/really_bad_ssgi.wgsl"
 #import "shaders/bad_ssr.wgsl"
-#import "shaders/gtao_utils.wgsl"
 #import "shaders/bad_gtao.wgsl"
 #import "shaders/shadows.wgsl"
 #import bevy_pbr::fog
@@ -134,9 +136,10 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
         output_color = apply_fog(output_color, in.world_position.xyz, view.world_position.xyz);
     }
 
-    //var ssao = bad_ssao(in.frag_coord.xy, in.world_normal, 0u);
-    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal);
-    output_color = ssao;//vec4(ssao, output_color.w);
+//    var ssao = bad_ssao(in.frag_coord, in.world_normal, in.world_position.xyz, 0u);
+//    let good_ssao = bad_ssao.xyz;//gtao_multibounce(bad_ssao.x, material.base_color.rgb);
+//    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
+//    output_color = vec4(ssao.xyz, output_color.w);
 
 #ifdef TONEMAP_IN_SHADER
         output_color = tone_mapping(output_color);

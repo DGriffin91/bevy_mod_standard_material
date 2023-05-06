@@ -208,7 +208,7 @@ fn sample_cascade(light_id: u32, cascade_index: u32, frag_position: vec4<f32>, s
     return sample_shadow_map_the_witness(light_local, depth, array_index);
 }
 
-fn fetch_directional_shadow(frag_coord: vec2<f32>, light_id: u32, frag_position: vec4<f32>, surface_normal: vec3<f32>, view_z: f32, sample_index: u32) -> f32 {
+fn fetch_directional_shadow(frag_coord: vec4<f32>, light_id: u32, frag_position: vec4<f32>, surface_normal: vec3<f32>, view_z: f32, sample_index: u32) -> f32 {
     let light = &lights.directional_lights[light_id];
     let cascade_index = get_cascade_index(light_id, view_z);
 

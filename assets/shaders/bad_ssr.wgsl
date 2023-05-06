@@ -7,8 +7,8 @@ fn bad_ssr(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: vec
     let ifrag_coord = vec2<i32>(frag_coord.xy);
     let ufrag_coord = vec2<u32>(frag_coord.xy);
     let depth_tex_dims = vec2<f32>(textureDimensions(depth_prepass_texture));
-    let screen_uv = frag_coord.xy / depth_tex_dims;
-    let depth = frag_coord.z;
+    let screen_uv = frag_coord_to_uv(frag_coord.xy);
+    let ray_start_ndc = frag_coord_to_ndc(frag_coord);
     var V = normalize(view.world_position.xyz - world_position);
 
     // Build a basis for sampling the BRDF, as BRDF sampling functions assume that the normal faces +Z.
@@ -47,7 +47,7 @@ fn bad_ssr(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: vec
 
         //direction = normalize(surface_normal + direction);
         var dmr = DepthRayMarch_new_from_depth(depth_tex_dims);   
-        dmr.ray_start_cs = vec3(uv_to_cs(screen_uv), depth);
+        dmr.ray_start_cs = ray_start_ndc;
         dmr = to_ws(dmr, world_position + trace_dir_ws * raymarch_distance);
         //dmr = to_ws_dir(dmr, direction);
         dmr.linear_steps = linear_sample_count;

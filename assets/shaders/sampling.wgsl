@@ -82,6 +82,16 @@ fn hash_noise(ifrag_coord: vec2<i32>, frame: u32) -> f32 {
     return unormf(urnd);
 }
 
+// Warning: only good for 4096 frames. Don't use with super long frame accumulation
+fn white_frame_noise(seed: u32) -> vec4<f32> {
+    return vec4(
+        hash_noise(vec2(0 + i32(seed)), globals.frame_count + seed), 
+        hash_noise(vec2(1 + i32(seed)), globals.frame_count + 4096u + seed),
+        hash_noise(vec2(2 + i32(seed)), globals.frame_count + 8192u + seed),
+        hash_noise(vec2(3 + i32(seed)), globals.frame_count + 12288u + seed)
+    );
+}
+
 // https://blog.demofox.org/2022/01/01/interleaved-gradient-noise-a-different-kind-of-low-discrepancy-sequence
 fn interleaved_gradient_noise(pixel_coordinates: vec2<f32>, frame: u32) -> f32 {
     let frame = f32(frame % 64u);

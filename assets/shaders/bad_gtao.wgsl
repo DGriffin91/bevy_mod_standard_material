@@ -67,43 +67,7 @@ const HALF_PI: f32 = 1.57079632679;
 //    return depth_center;
 //}
 
-//fn load_normal_view_space(uv: vec2<f32>) -> vec3<f32> {
-//    var world_normal = textureSampleLevel(normals, point_clamp_sampler, uv, 0.0).xyz;
-//    world_normal = (world_normal * 2.0) - 1.0;
-//    let inverse_view = mat3x3<f32>(
-//        view.inverse_view[0].xyz,
-//        view.inverse_view[1].xyz,
-//        view.inverse_view[2].xyz,
-//    );
-//    return inverse_view * world_normal;
-//}
 
-fn convert_normal_view_space(world_normal: vec3<f32>) -> vec3<f32> {
-    //let world_normal = (world_normal * 2.0) - 1.0;
-    //let inverse_view = mat3x3<f32>(
-    //    view.inverse_view[0].xyz,
-    //    view.inverse_view[1].xyz,
-    //    view.inverse_view[2].xyz,
-    //);
-    //return inverse_view * world_normal;
-    var view_space_nor = vec4(world_normal, 0.0) * view.view;
-    return view_space_nor.xyz;
-}
-
-fn reconstruct_view_space_position(depth: f32, uv: vec2<f32>) -> vec3<f32> {
-    //let f = vec2(view.inverse_projection[0][0], view.inverse_projection[1][1]);
-    //return vec3(uv * f * -depth, depth);
-    var ndc = vec4(uv * 2.0 - 1.0, depth, 1.0);
-    ndc.y = -ndc.y;
-    var view_space = view.inverse_projection * ndc;
-    return view_space.xyz / view_space.w;
-}
-
-fn load_and_reconstruct_view_space_position(uv: vec2<f32>, depth_tex_dims: vec2<f32>, sample_mip_level: f32) -> vec3<f32> {
-    //let depth = textureSampleLevel(preprocessed_depth, point_clamp_sampler, uv, sample_mip_level).r;
-    let depth = prepass_depth(vec4(uv * depth_tex_dims, 0.0, 0.0), 0u);
-    return reconstruct_view_space_position(depth, uv);
-}
 
 fn rotation_matrix(to: vec3<f32>) -> mat3x3<f32> {
     let fromm = vec3(0.0, 0.0, -1.0);
@@ -164,23 +128,17 @@ fn bad_gtao(frag_coord: vec4<f32>, world_position: vec3<f32>, surface_normal: ve
     let falloff_mul = -1.0 / falloff_range;
     let falloff_add = falloff_from / falloff_range + 1.0;
 
-    //let pixel_coordinates = vec2<i32>(global_id.xy);
     let pixel_coordinates = frag_coord.xy;
-    //let uv = (vec2<f32>(pixel_coordinates) + 0.5) / view.viewport.zw;
-    let uv = pixel_coordinates / depth_tex_dims;
+    let uv = frag_coord_to_uv(frag_coord.xy);
 
-    var pixel_depth = frag_coord.z; //calculate_neighboring_depth_differences(pixel_coordinates);
+    var pixel_depth = frag_coord.z;
     pixel_depth += 0.00001; // Avoid depth precision issues
 
-    let pixel_position = reconstruct_view_space_position(pixel_depth, uv);
-    let pixel_normal = convert_normal_view_space(surface_normal); //load_normal_view_space(uv);
+    let pixel_position = position_world_to_view(world_position);
+    let pixel_normal = direction_world_to_view(surface_normal); //load_normal_view_space(uv);
     let view_vec = normalize(-pixel_position);
 
-    let white_frame_noise = vec3(
-        hash_noise(vec2(0), globals.frame_count), 
-        hash_noise(vec2(1), globals.frame_count + 1024u),
-        hash_noise(vec2(2), globals.frame_count + 2048u)
-    );
+    let white_frame_noise = white_frame_noise(123u);
 
     //let noise = vec2(
     //    hash_noise(ifrag_coord, globals.frame_count), 
@@ -227,13 +185,13 @@ fn bad_gtao(frag_coord: vec4<f32>, world_position: vec3<f32>, surface_normal: ve
             //sample_noise = fract(noise.y + sample_noise);
 
             var sample_noise = fract(
-                blue_noise_for_pixel(ufrag_coord, u32(sample_t + slice_t) * SAMPLES_PER_SLICE_SIDE * SLICE_COUNT + globals.frame_count) 
-                + white_frame_noise.x
+                blue_noise_for_pixel(ufrag_coord, 2u + u32(sample_t * slice_t) * SAMPLES_PER_SLICE_SIDE * SLICE_COUNT + globals.frame_count) 
+                + white_frame_noise.z
             );
 
             //var sample_noise = fract(
-            //    hash_noise(ifrag_coord, u32(sample_t + slice_t) * SAMPLES_PER_SLICE_SIDE * SLICE_COUNT + globals.frame_count) 
-            //    + white_frame_noise.x
+            //    hash_noise(ifrag_coord, 3u + u32(sample_t * slice_t) * SAMPLES_PER_SLICE_SIDE * SLICE_COUNT + globals.frame_count) 
+            //    + white_frame_noise.z
             //);
 
             var s = ((sample_t + sample_noise) / samples_per_slice_side) * DIST_MULT;
@@ -241,14 +199,15 @@ fn bad_gtao(frag_coord: vec4<f32>, world_position: vec3<f32>, surface_normal: ve
             let sample = s * sample_mul;
 
             let sample_mip_level = clamp(log2(length(sample)) - 3.3, 0.0, 5.0); // https://github.com/GameTechDev/XeGTAO#memory-bandwidth-bottleneck
-            //let sample_position_1 = load_and_reconstruct_view_space_position(uv + sample, depth_tex_dims, sample_mip_level);
-            //let sample_position_2 = load_and_reconstruct_view_space_position(uv - sample, depth_tex_dims, sample_mip_level);
 
-            let depth_1 = prepass_depth(vec4((uv + sample) * depth_tex_dims, 0.0, 0.0), 0u);
-            let sample_position_1 = reconstruct_view_space_position(depth_1, uv + sample);
+            let uv1 = uv + sample;
+            let uv2 = uv - sample;
 
-            let depth_2 = prepass_depth(vec4((uv - sample) * depth_tex_dims, 0.0, 0.0), 0u);
-            let sample_position_2 = reconstruct_view_space_position(depth_2, uv - sample);
+            let depth_1 = prepass_depth(vec4(uv1 * depth_tex_dims, 0.0, 0.0), 0u);
+            let sample_position_1 = position_ndc_to_view(vec3(uv_to_ndc(uv1), depth_1));
+
+            let depth_2 = prepass_depth(vec4(uv2 * depth_tex_dims, 0.0, 0.0), 0u);
+            let sample_position_2 = position_ndc_to_view(vec3(uv_to_ndc(uv2), depth_2));
 
             let sample_difference_1 = sample_position_1 - pixel_position;
             let sample_difference_2 = sample_position_2 - pixel_position;
@@ -300,7 +259,7 @@ fn bad_gtao(frag_coord: vec4<f32>, world_position: vec3<f32>, surface_normal: ve
     }
 
     visibility /= slice_count;
-    //visibility = pow(visibility, 1.5);
+    //visibility = pow(visibility, 9.0);
     visibility = clamp(visibility, 0.03, 1.0);
     bent_normal = normalize(bent_normal);
 

@@ -509,4 +509,5 @@ pub struct BlueNoise(pub Handle<Image>);
 pub fn load_blue_noise(mut commands: Commands, ass: Res<AssetServer>) {
     //commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64_s16.png")));
     commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64.dds")));
+    //commands.insert_resource(BlueNoise(ass.load("textures/stochastic_noise.ktx2")));
 }

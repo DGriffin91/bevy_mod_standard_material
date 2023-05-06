@@ -1,5 +1,6 @@
 //! Loads and renders a glTF file as a scene.
 
+mod bistro;
 mod camera_controller;
 mod copy_frame;
 mod helmet;
@@ -15,6 +16,8 @@ use bevy::{
     prelude::*,
     window::PresentMode,
 };
+use bevy_coordinate_systems::CoordinateTransformationsPlugin;
+use bistro::BistroPlugin;
 use copy_frame::CopyFramePlugin;
 use helmet::HelmetScenePlugin;
 use kitchen::KitchenPlugin;
@@ -24,6 +27,7 @@ use sphere::SphereScenePlugin;
 
 fn main() {
     App::new()
+        //.add_plugin(BistroPlugin)
         .add_plugin(KitchenPlugin)
         //.add_plugin(SponzaPlugin)
         //.add_plugin(HelmetScenePlugin)
@@ -45,6 +49,7 @@ fn main() {
                     ..default()
                 }),
         )
+        .add_plugin(CoordinateTransformationsPlugin)
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
         .add_system(swap_standard_material)
         .add_plugin(LogDiagnosticsPlugin::default())

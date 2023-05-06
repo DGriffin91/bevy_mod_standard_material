@@ -5,20 +5,18 @@ use bevy::{
     render::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::RenderAssets,
-        render_graph::{
-            Node, NodeRunError, RenderGraph, RenderGraphApp, RenderGraphContext, SlotInfo, SlotType,
-        },
+        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
             BindGroupLayoutEntry, BindingResource, BindingType, CachedRenderPipelineId,
             ColorTargetState, ColorWrites, Extent3d, FragmentState, MultisampleState, Operations,
             PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
             RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages,
-            ShaderType, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
-            TextureUsages, TextureViewDescriptor, TextureViewDimension,
+            TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
+            TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
-        texture::{BevyDefault, ImageSampler},
+        texture::ImageSampler,
         view::{ExtractedView, ViewTarget},
         RenderApp,
     },
@@ -38,34 +36,23 @@ impl Plugin for CopyFramePlugin {
                 };
 
         render_app
-            // Initialize the pipeline
-            .init_resource::<PostProcessPipeline>()
-            // Bevy's renderer uses a render graph which is a collection of nodes in a directed acyclic graph.
-            // It currently runs on each view/camera and executes each node in the specified order.
-            // It will make sure that any node that needs a dependency from another node
-            // only runs when that dependency is done.
-            //
-            // Each node can execute arbitrary work, but it generally runs at least one render pass.
-            // A node only has access to the render world, so if you need data from the main world
-            // you need to extract it manually or with the plugin like above.
-            // Add a [`Node`] to the [`RenderGraph`]
-            // The Node needs to impl FromWorld
-            .add_render_graph_node::<FrameCopyNode>(
-                // Specifiy the name of the graph, in this case we want the graph for 3d
-                core_3d::graph::NAME,
-                // It also needs the name of the node
-                FrameCopyNode::NAME,
-            )
+            .add_render_graph_node::<FrameCopyNode>(core_3d::graph::NAME, FrameCopyNode::NAME)
             .add_render_graph_edges(
                 core_3d::graph::NAME,
-                // Specify the node ordering.
-                // This will automatically create all required node edges to enforce the given ordering.
                 &[
                     core_3d::graph::node::MAIN_TRANSPARENT_PASS,
                     FrameCopyNode::NAME,
                     core_3d::graph::node::BLOOM,
                 ],
             );
+    }
+
+    fn finish(&self, app: &mut App) {
+        let render_app = match app.get_sub_app_mut(RenderApp) {
+            Ok(render_app) => render_app,
+            Err(_) => return,
+        };
+        render_app.init_resource::<CopyFramePipeline>();
     }
 }
 
@@ -86,12 +73,7 @@ impl FrameCopyNode {
 }
 
 impl Node for FrameCopyNode {
-    // This will run every frame before the run() method
-    // The important difference is that `self` is `mut` here
     fn update(&mut self, world: &mut World) {
-        // Since this is not a system we need to update the query manually.
-        // This is mostly boilerplate. There are plans to remove this in the future.
-        // For now, you can just copy it.
         self.query.update_archetypes(world);
     }
 
@@ -101,7 +83,6 @@ impl Node for FrameCopyNode {
         render_context: &mut RenderContext,
         world: &World,
     ) -> Result<(), NodeRunError> {
-        // Get the entity of the view for the render graph where this node is running
         let view_entity = graph_context.view_entity();
 
         let Ok(view_target) = self.query.get_manual(world, view_entity) else {
@@ -113,7 +94,7 @@ impl Node for FrameCopyNode {
             return Ok(());
         }
 
-        let post_process_pipeline = world.resource::<PostProcessPipeline>();
+        let post_process_pipeline = world.resource::<CopyFramePipeline>();
         let images = world.resource::<RenderAssets<Image>>();
         let pipeline_cache = world.resource::<PipelineCache>();
         let Some(copy_frame_data) = world.get_resource::<CopyFrameData>() else {
@@ -164,13 +145,13 @@ impl Node for FrameCopyNode {
 }
 
 #[derive(Resource)]
-struct PostProcessPipeline {
+struct CopyFramePipeline {
     layout: BindGroupLayout,
     sampler: Sampler,
     pipeline_id: CachedRenderPipelineId,
 }
 
-impl FromWorld for PostProcessPipeline {
+impl FromWorld for CopyFramePipeline {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
 
@@ -296,6 +277,10 @@ fn resize_image(
     let w = window.physical_width();
     let h = window.physical_height();
 
+    if w == 0 || h == 0 {
+        return;
+    }
+
     if image.size() != vec2(w as f32, h as f32) {
         let mut image = image.clone();
         image.resize(Extent3d {
@@ -303,11 +288,11 @@ fn resize_image(
             height: h,
             depth_or_array_layers: 1,
         });
-        let image = images.add(image);
+        let image_h = images.add(image);
         for (_, mat) in custom_materials.iter_mut() {
-            mat.prev_image = Some(image.clone());
+            mat.prev_image = Some(image_h.clone());
         }
-        copy_frame_data.image = image.clone();
+        copy_frame_data.image = image_h.clone();
         // whyyyyyyyyyyyyyyyyyy
     }
 }

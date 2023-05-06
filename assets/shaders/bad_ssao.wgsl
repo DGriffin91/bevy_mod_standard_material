@@ -46,36 +46,28 @@ fn noise_test(frag_coord: vec2<f32>, surface_normal: vec3<f32>, sample_index: u3
     return vec4(vec3(dots), 1.0);
 }
 
-fn bad_ssao(frag_coord: vec2<f32>, surface_normal: vec3<f32>, sample_index: u32) -> vec4<f32> {
+fn bad_ssao(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: vec3<f32>, sample_index: u32) -> vec4<f32> {
     let samples = 5u;
     let linear_steps = 4u;
     let depth_thickness = 0.6;
     let trace_dist = 0.7;
     let dist_jitter_amount = 0.2; // stay below 1.0
 
-    let ifrag_coord = vec2<i32>(frag_coord);
-    let ufrag_coord = vec2<u32>(frag_coord);
+    let ifrag_coord = vec2<i32>(frag_coord.xy);
+    let ufrag_coord = vec2<u32>(frag_coord.xy);
     let depth_tex_dims = vec2<f32>(textureDimensions(depth_prepass_texture));
-    let screen_uv = frag_coord / depth_tex_dims;
-    // TODO just use in.world_position
-    let depth = get_depth(screen_uv, sample_index);
-    let ray_hit_ws = position_from_uv(screen_uv, depth); // + normal_bias_offset
-
+    let screen_uv = frag_coord_to_uv(frag_coord.xy);
     
     var dmr = DepthRayMarch_new_from_depth(depth_tex_dims);
-    dmr.ray_start_cs = vec3(uv_to_cs(screen_uv), depth);
+    dmr.ray_start_cs = frag_coord_to_ndc(frag_coord);
     dmr.linear_steps = linear_steps;
     dmr.march_behind_surfaces = true;
     dmr.use_secant = false;
     dmr.bisection_steps = 0u;
     dmr.use_bilinear = false;
 
-    let white_frame_noise = vec4(
-        hash_noise(vec2(0), globals.frame_count + 0u), 
-        hash_noise(vec2(1), globals.frame_count + 1u),
-        hash_noise(vec2(2), globals.frame_count + 2u),
-        hash_noise(vec2(3), globals.frame_count + 3u)
-    );
+    let white_frame_noise = white_frame_noise(123u);
+
     let TBN = build_orthonormal_basis(surface_normal);
 
     var tot = 0.0;
@@ -94,12 +86,12 @@ fn bad_ssao(frag_coord: vec2<f32>, surface_normal: vec3<f32>, sample_index: u32)
         dmr.depth_thickness_linear_z = depth_thickness * dist_jitter;
 
         direction = normalize(direction * TBN);
-        dmr = to_ws(dmr, ray_hit_ws + direction * trace_dist * dist_jitter);
+        dmr = to_ws(dmr, world_position + direction * trace_dist * dist_jitter);
         dmr.jitter = jitter;
         let raymarch_result = march(dmr, sample_index);
         var shadow = 0.0;
         if (raymarch_result.hit) {
-            tot += pow(mix(1.0, 0.0, raymarch_result.hit_t), 1.0 - dist_jitter) * 0.9;
+            tot += pow(mix(1.0, 0.0, raymarch_result.hit_t), 1.0 - dist_jitter);
         }
     }
     tot /= f32(samples);

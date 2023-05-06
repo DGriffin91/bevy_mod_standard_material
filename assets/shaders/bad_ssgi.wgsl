@@ -17,9 +17,8 @@ fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: ve
     let ifrag_coord = vec2<i32>(frag_coord.xy);
     let ufrag_coord = vec2<u32>(frag_coord.xy);
     let depth_tex_dims = vec2<f32>(textureDimensions(depth_prepass_texture));
-    let px_size = 1.0 / depth_tex_dims;
-    let screen_uv = frag_coord.xy * px_size;
-    let depth = frag_coord.z;
+    let screen_uv = frag_coord_to_uv(frag_coord.xy);
+    let ray_start_ndc = frag_coord_to_ndc(frag_coord);
 
     let TBN = build_orthonormal_basis(surface_normal);
     var tot = vec3(0.0);
@@ -31,12 +30,13 @@ fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: ve
     );
 
     var dmr = DepthRayMarch_new_from_depth(depth_tex_dims);
-    dmr.ray_start_cs = vec3(uv_to_cs(screen_uv), depth);
+    dmr.ray_start_cs = ray_start_ndc;
     dmr.linear_steps = linear_steps;
     dmr.depth_thickness_linear_z = depth_thickness;
     dmr.march_behind_surfaces = false;
     dmr.use_secant = true;
     dmr.bisection_steps = bisection_steps;
+    dmr.use_bilinear = false;
 
     for (var i = 0u; i < samples; i += 1u) {
         let seed = i * samples + globals.frame_count * samples;

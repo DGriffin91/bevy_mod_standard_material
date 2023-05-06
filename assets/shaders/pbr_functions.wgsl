@@ -233,7 +233,7 @@ fn pbr(
         var shadow: f32 = 1.0;
         if ((in.flags & MESH_FLAGS_SHADOW_RECEIVER_BIT) != 0u
                 && (lights.directional_lights[i].flags & DIRECTIONAL_LIGHT_FLAGS_SHADOWS_ENABLED_BIT) != 0u) {
-            shadow = fetch_directional_shadow(in.frag_coord.xy, i, in.world_position, in.world_normal, view_z, sample_index);
+            shadow = fetch_directional_shadow(in.frag_coord, i, in.world_position, in.world_normal, view_z, sample_index);
         }
         var light_contrib = directional_light(i, roughness, NdotV, in.N, in.V, R, F0, f_ab, diffuse_color);
 #ifdef DIRECTIONAL_LIGHT_SHADOW_MAP_DEBUG_CASCADES
@@ -246,8 +246,8 @@ fn pbr(
     var indirect_light = ambient_light(in.world_position, in.N, in.V, NdotV, diffuse_color, F0, perceptual_roughness, occlusion);
 
     // BAD SSGI
-//    var ssgi = bad_ssgi(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
-//    indirect_light += ssgi * diffuse_color;
+    var ssgi = bad_ssgi(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
+    indirect_light += ssgi * diffuse_color;
 
 //    var ssgi = really_bad_ssgi(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
 //    indirect_light += ssgi * diffuse_color;
@@ -258,8 +258,8 @@ fn pbr(
 //    indirect_light = ssao * diffuse_color;
 
     // BAD SSR
-//    var ssr = bad_ssr(in.frag_coord, normalize(in.N), in.world_position.xyz, roughness, F0, sample_index).rgb;
-//    indirect_light += ssr;
+    var ssr = bad_ssr(in.frag_coord, normalize(in.N), in.world_position.xyz, roughness, F0, sample_index).rgb;
+    indirect_light += ssr;
 
 
     // Environment map light (indirect)
