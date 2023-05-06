@@ -25,7 +25,6 @@ var prev_frame_sampler: sampler;
 #import "shaders/gtao_utils.wgsl"
 #import "shaders/bad_ssao.wgsl"
 #import "shaders/bad_ssgi.wgsl"
-#import "shaders/really_bad_ssgi.wgsl"
 #import "shaders/bad_ssr.wgsl"
 #import "shaders/bad_gtao.wgsl"
 #import "shaders/shadows.wgsl"
