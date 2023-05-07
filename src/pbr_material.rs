@@ -5,6 +5,7 @@ use bevy::{
     prelude::*,
     reflect::{FromReflect, Reflect, TypeUuid},
     render::{
+        extract_resource::ExtractResource,
         mesh::MeshVertexBufferLayout,
         render_asset::RenderAssets,
         render_resource::{
@@ -503,7 +504,7 @@ pub fn swap_standard_material(
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, ExtractResource, Clone)]
 pub struct BlueNoise(pub Handle<Image>);
 
 pub fn load_blue_noise(mut commands: Commands, ass: Res<AssetServer>) {

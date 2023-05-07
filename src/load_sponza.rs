@@ -1,6 +1,9 @@
 use std::f32::consts::PI;
 
-use crate::camera_controller::{CameraController, CameraControllerPlugin};
+use crate::{
+    camera_controller::{CameraController, CameraControllerPlugin},
+    path_trace::TraceSettings,
+};
 use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
@@ -181,32 +184,34 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let mut bloom_settings = BloomSettings::NATURAL;
     bloom_settings.intensity *= 0.35;
     // Camera
-    commands.spawn((
-        Camera3dBundle {
-            camera: Camera {
-                hdr: true,
+    commands
+        .spawn((
+            Camera3dBundle {
+                camera: Camera {
+                    hdr: true,
+                    ..default()
+                },
+                tonemapping: Tonemapping::TonyMcMapface,
+                transform: Transform::from_xyz(-10.5, 1.7, -1.0)
+                    .looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
+                projection: Projection::Perspective(PerspectiveProjection {
+                    fov: std::f32::consts::PI / 3.0,
+                    near: 0.1,
+                    far: 1000.0,
+                    aspect_ratio: 1.0,
+                }),
                 ..default()
             },
-            tonemapping: Tonemapping::TonyMcMapface,
-            transform: Transform::from_xyz(-10.5, 1.7, -1.0)
-                .looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
-            projection: Projection::Perspective(PerspectiveProjection {
-                fov: std::f32::consts::PI / 3.0,
-                near: 0.1,
-                far: 1000.0,
-                aspect_ratio: 1.0,
-            }),
-            ..default()
-        },
-        DepthPrepass,
-        NormalPrepass,
-        bloom_settings,
-        CameraController {
-            walk_speed: 1.0,
-            ..default()
-        },
-        Fxaa::default(),
-    ));
+            DepthPrepass,
+            NormalPrepass,
+            bloom_settings,
+            CameraController {
+                walk_speed: 1.0,
+                ..default()
+            },
+            Fxaa::default(),
+        ))
+        .insert(TraceSettings { frame: 0, fps: 0.0 });
 }
 
 pub fn all_children<F: FnMut(Entity)>(

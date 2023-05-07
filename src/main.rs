@@ -6,6 +6,7 @@ mod copy_frame;
 mod helmet;
 mod kitchen;
 mod load_sponza;
+mod path_trace;
 mod pbr_material;
 mod sphere;
 
@@ -17,11 +18,13 @@ use bevy::{
     window::PresentMode,
 };
 use bevy_coordinate_systems::CoordinateTransformationsPlugin;
+use bevy_mod_bvh::{DynamicTLAS, StaticTLAS};
 use bistro::BistroPlugin;
 use copy_frame::CopyFramePlugin;
 use helmet::HelmetScenePlugin;
 use kitchen::KitchenPlugin;
 use load_sponza::SponzaPlugin;
+use path_trace::PathTracePlugin;
 use pbr_material::{load_blue_noise, swap_standard_material, CustomStandardMaterial};
 use sphere::SphereScenePlugin;
 
@@ -49,6 +52,7 @@ fn main() {
                     ..default()
                 }),
         )
+        .add_plugin(PathTracePlugin)
         .add_plugin(CoordinateTransformationsPlugin)
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
         .add_system(swap_standard_material)
@@ -57,5 +61,31 @@ fn main() {
         .add_plugin(CopyFramePlugin)
         .add_plugin(TemporalAntiAliasPlugin)
         .add_startup_system(load_blue_noise)
+        .add_startup_system(no_empty_tlas)
         .run();
+}
+
+//TODO don't require this
+fn no_empty_tlas(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    // cube
+    commands
+        .spawn(MaterialMeshBundle {
+            mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
+            material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+            transform: Transform::from_xyz(0.0, 0.5, 0.0),
+            ..default()
+        })
+        .insert(StaticTLAS);
+    commands
+        .spawn(MaterialMeshBundle {
+            mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
+            material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+            transform: Transform::from_xyz(0.0, 0.5, 0.0),
+            ..default()
+        })
+        .insert(DynamicTLAS);
 }

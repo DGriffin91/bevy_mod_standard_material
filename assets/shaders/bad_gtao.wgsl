@@ -5,69 +5,8 @@
 // Source code heavily based on XeGTAO v1.30 from Intel
 // https://github.com/GameTechDev/XeGTAO/blob/0d177ce06bfa642f64d8af4de1197ad1bcb862d4/Source/Rendering/Shaders/XeGTAO.hlsli
 
-//#import bevy_pbr::gtao_utils
-//#import bevy_pbr::utils
+
 const HALF_PI: f32 = 1.57079632679;
-//#import bevy_render::view
-//#import bevy_render::globals
-
-//@group(0) @binding(0) var preprocessed_depth: texture_2d<f32>;
-//@group(0) @binding(1) var normals: texture_2d<f32>;
-//@group(0) @binding(2) var hilbert_index: texture_2d<u32>;
-//@group(0) @binding(3) var ambient_occlusion: texture_storage_2d<rgba8unorm, write>;
-//@group(0) @binding(4) var depth_differences: texture_storage_2d<r32uint, write>;
-//@group(0) @binding(5) var<uniform> globals: Globals;
-//@group(1) @binding(0) var point_clamp_sampler: sampler;
-//@group(1) @binding(1) var<uniform> view: View;
-
-//fn load_noise(pixel_coordinates: vec2<i32>) -> vec2<f32> {
-//    var index = textureLoad(hilbert_index, pixel_coordinates % 64, 0).r;
-//
-//#ifdef TEMPORAL_NOISE
-//    index += 288u * (globals.frame_count % 64u);
-//#endif
-//
-//    // R2 sequence - http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences
-//    return fract(0.5 + f32(index) * vec2<f32>(0.75487766624669276005, 0.5698402909980532659114));
-//}
-
-//// Calculate differences in depth between neighbor pixels (later used by the spatial denoiser pass to preserve object edges)
-//fn calculate_neighboring_depth_differences(pixel_coordinates: vec2<i32>) -> f32 {
-//    let fpixel_coordinates = vec2<f32>(pixel_coordinates);
-//    // Sample the pixel's depth and 4 depths around it
-//    //let uv = vec2<f32>(pixel_coordinates) / view.viewport.zw;
-//    //let depths_upper_left = textureGather(0, preprocessed_depth, point_clamp_sampler, uv);
-//    //let depths_bottom_right = textureGather(0, preprocessed_depth, point_clamp_sampler, uv, vec2<i32>(1i, 1i));
-//    //let depth_center = depths_upper_left.y;
-//    //let depth_left = depths_upper_left.x;
-//    //let depth_top = depths_upper_left.z;
-//    //let depth_bottom = depths_bottom_right.x;
-//    //let depth_right = depths_bottom_right.z;
-//
-//    let depth_center = prepass_depth(vec4(fpixel_coordinates, 0.0, 0.0), 0u);
-//    let depth_left   = prepass_depth(vec4(fpixel_coordinates + vec2(-1.0,  0.0), 0.0, 0.0), 0u);
-//    let depth_top    = prepass_depth(vec4(fpixel_coordinates + vec2( 0.0, -1.0), 0.0, 0.0), 0u);
-//    let depth_bottom = prepass_depth(vec4(fpixel_coordinates + vec2( 0.0,  1.0), 0.0, 0.0), 0u);
-//    let depth_right  = prepass_depth(vec4(fpixel_coordinates + vec2( 1.0,  0.0), 0.0, 0.0), 0u);
-//
-//    // Calculate the depth differences (large differences represent object edges)
-//    var edge_info = vec4<f32>(depth_left, depth_right, depth_top, depth_bottom) - depth_center;
-//    let slope_left_right = (edge_info.y - edge_info.x) * 0.5;
-//    let slope_top_bottom = (edge_info.w - edge_info.z) * 0.5;
-//    let edge_info_slope_adjusted = edge_info + vec4<f32>(slope_left_right, -slope_left_right, slope_top_bottom, -slope_top_bottom);
-//    edge_info = min(abs(edge_info), abs(edge_info_slope_adjusted));
-//    let bias = 0.25; // Using the bias and then saturating nudges the values a bit
-//    let scale = depth_center * 0.011; // Weight the edges by their distance from the camera
-//    edge_info = saturate((1.0 + bias) - edge_info / scale); // Apply the bias and scale, and invert edge_info so that small values become large, and vice versa
-//
-//    // Pack the edge info into the texture
-//    let edge_info_packed = vec4<u32>(pack4x8unorm(edge_info), 0u, 0u, 0u);
-//    textureStore(depth_differences, pixel_coordinates, edge_info_packed);
-//
-//    return depth_center;
-//}
-
-
 
 fn rotation_matrix(to: vec3<f32>) -> mat3x3<f32> {
     let fromm = vec3(0.0, 0.0, -1.0);
@@ -224,25 +163,6 @@ fn bad_gtao(frag_coord: vec4<f32>, world_position: vec3<f32>, surface_normal: ve
             cos_horizon_1 = max(cos_horizon_1, sample_cos_horizon_1);
             cos_horizon_2 = max(cos_horizon_2, sample_cos_horizon_2);
 
-//            var closest_motion_vector = prepass_motion_vector(vec4((uv + sample) * depth_tex_dims, 0.0, 0.0), 0u).xy;
-//            var history_uv = uv + sample - closest_motion_vector;
-//            if history_uv.x > 0.0 && history_uv.x < 1.0 && history_uv.y > 0.0 && history_uv.y < 1.0 {
-//                let samp_ws_pos = conv_pos_cs_to_ws(vec3(uv_to_cs(uv + sample), depth_1));
-//                let samp_dir = normalize(samp_ws_pos - world_position);
-//                let c1 = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
-//                let d = saturate(dot(samp_dir, surface_normal) + 0.01);
-//                s_color += c1 * (1.0 - cos_horizon_1) * d;
-//            }
-//
-//            closest_motion_vector = prepass_motion_vector(vec4((uv - sample) * depth_tex_dims, 0.0, 0.0), 0u).xy;
-//            history_uv = uv - sample - closest_motion_vector;
-//            if history_uv.x > 0.0 && history_uv.x < 1.0 && history_uv.y > 0.0 && history_uv.y < 1.0 {
-//                let samp_ws_pos = conv_pos_cs_to_ws(vec3(uv_to_cs(uv - sample), depth_2));
-//                let samp_dir = normalize(samp_ws_pos - world_position);
-//                let c2 = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
-//                let d = saturate(dot(samp_dir, surface_normal) + 0.01);
-//                s_color += c2 * (1.0 - cos_horizon_2) * d;
-//            }
         }
 
         let horizon_1 = fast_acos(cos_horizon_1);

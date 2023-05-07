@@ -2,6 +2,7 @@ use std::f32::consts::PI;
 
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
+    path_trace::TraceSettings,
     pbr_material::CustomStandardMaterial,
 };
 use bevy::{
@@ -99,37 +100,39 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let mut bloom_settings = BloomSettings::NATURAL;
     bloom_settings.intensity *= 0.35;
     // Camera
-    commands.spawn((
-        Camera3dBundle {
-            camera: Camera {
-                hdr: true,
+    commands
+        .spawn((
+            Camera3dBundle {
+                camera: Camera {
+                    hdr: true,
+                    ..default()
+                },
+                tonemapping: Tonemapping::BlenderFilmic,
+                transform: Transform::from_xyz(3.4, 1.7, 1.0)
+                    .looking_at(Vec3::new(-0.1, 1.2, 0.2), Vec3::Y),
+                projection: Projection::Perspective(PerspectiveProjection {
+                    fov: std::f32::consts::PI / 3.0,
+                    near: 0.1,
+                    far: 1000.0,
+                    aspect_ratio: 1.0,
+                }),
                 ..default()
             },
-            tonemapping: Tonemapping::BlenderFilmic,
-            transform: Transform::from_xyz(3.4, 1.7, 1.0)
-                .looking_at(Vec3::new(-0.1, 1.2, 0.2), Vec3::Y),
-            projection: Projection::Perspective(PerspectiveProjection {
-                fov: std::f32::consts::PI / 3.0,
-                near: 0.1,
-                far: 1000.0,
-                aspect_ratio: 1.0,
-            }),
-            ..default()
-        },
-        bloom_settings,
-        CameraController {
-            walk_speed: 1.0,
-            ..default()
-        },
-        NormalPrepass,
-        //DepthPrepass,
-        //MotionVectorPrepass,
-        TemporalAntiAliasBundle::default(),
-        // {
-        //    settings: TemporalAntiAliasSettings { reset: true },
-        //    jitter: TemporalJitter { offset: Vec2::ZERO },
-        //    depth_prepass: DepthPrepass,
-        //    motion_vector_prepass: MotionVectorPrepass,
-        //},
-    ));
+            bloom_settings,
+            CameraController {
+                walk_speed: 1.0,
+                ..default()
+            },
+            NormalPrepass,
+            //DepthPrepass,
+            //MotionVectorPrepass,
+            TemporalAntiAliasBundle::default(),
+            // {
+            //    settings: TemporalAntiAliasSettings { reset: true },
+            //    jitter: TemporalJitter { offset: Vec2::ZERO },
+            //    depth_prepass: DepthPrepass,
+            //    motion_vector_prepass: MotionVectorPrepass,
+            //},
+        ))
+        .insert(TraceSettings { frame: 0, fps: 0.0 });
 }
