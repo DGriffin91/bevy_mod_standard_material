@@ -76,7 +76,7 @@ fn no_empty_tlas(
         .spawn(MaterialMeshBundle {
             mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
             material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-            transform: Transform::from_xyz(0.0, 0.5, 0.0),
+            transform: Transform::from_xyz(0.0, -1.5, 0.0),
             ..default()
         })
         .insert(StaticTLAS);
@@ -84,7 +84,7 @@ fn no_empty_tlas(
         .spawn(MaterialMeshBundle {
             mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
             material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-            transform: Transform::from_xyz(0.0, 0.5, 0.0),
+            transform: Transform::from_xyz(0.0, -1.5, 0.0),
             ..default()
         })
         .insert(DynamicTLAS);

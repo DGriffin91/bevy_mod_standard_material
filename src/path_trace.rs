@@ -1,8 +1,9 @@
+use crate::{
+    copy_frame::CopyFrameData,
+    pbr_material::{BlueNoise, CustomStandardMaterial},
+};
 use bevy::{
-    core_pipeline::{
-        core_3d,
-        prepass::{self, ViewPrepassTextures},
-    },
+    core_pipeline::{core_3d, prepass::ViewPrepassTextures},
     diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
     math::vec3,
     pbr::get_bind_group_layout_entries,
@@ -12,31 +13,29 @@ use bevy::{
             ComponentUniforms, ExtractComponent, ExtractComponentPlugin, UniformComponentPlugin,
         },
         extract_resource::ExtractResourcePlugin,
-        globals::{GlobalsBuffer, GlobalsUniform},
+        globals::GlobalsBuffer,
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-            BindGroupLayoutEntry, BindingResource, BindingType, BufferBindingType,
-            CachedRenderPipelineId, Operations, PipelineCache, RenderPassColorAttachment,
-            RenderPassDescriptor, Sampler, SamplerDescriptor, ShaderStages, ShaderType,
-            StorageBuffer, TextureFormat, TextureSampleType, TextureViewDimension,
+            BindingResource, CachedRenderPipelineId, Operations, PipelineCache,
+            RenderPassColorAttachment, RenderPassDescriptor, Sampler, SamplerDescriptor,
+            ShaderType, StorageBuffer, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice, RenderQueue},
         view::{ExtractedView, ViewTarget, ViewUniformOffset, ViewUniforms},
         Extract, RenderApp,
     },
 };
+use bevy_mod_bvh::pipeline_utils::*;
 use bevy_mod_bvh::{
     bind_group_layout_entry,
     gpu_data::{
-        extract_gpu_data, get_default_pipeline_desc, new_storage_buffer, sampler_entry, view_entry,
-        DynamicInstanceOrder, GPUBuffers, GPUDataPlugin, StaticInstanceOrder,
+        extract_gpu_data, new_storage_buffer, DynamicInstanceOrder, GPUBuffers, GPUDataPlugin,
+        StaticInstanceOrder,
     },
     BVHPlugin, BVHSet, DynamicTLAS, StaticTLAS,
 };
-
-use crate::pbr_material::{BlueNoise, CustomStandardMaterial};
 
 pub struct PathTracePlugin;
 impl Plugin for PathTracePlugin {
@@ -62,9 +61,9 @@ impl Plugin for PathTracePlugin {
             .add_render_graph_edges(
                 core_3d::graph::NAME,
                 &[
-                    core_3d::graph::node::BLOOM,
+                    core_3d::graph::node::END_MAIN_PASS,
                     PathTraceNode::NAME,
-                    core_3d::graph::node::TONEMAPPING,
+                    core_3d::graph::node::BLOOM,
                 ],
             );
     }
@@ -78,7 +77,7 @@ impl Plugin for PathTracePlugin {
     }
 }
 
-struct PathTraceNode {
+pub struct PathTraceNode {
     query: QueryState<
         (
             &'static ViewUniformOffset,
@@ -120,6 +119,12 @@ impl Node for PathTraceNode {
         let gpu_buffers = world.resource::<GPUBuffers>();
         let gpu_mat_buffers = world.resource::<GpuMatBuffers>();
         let images = world.resource::<RenderAssets<Image>>();
+        let Some(copy_frame_data) = world.get_resource::<CopyFrameData>() else {
+            return Ok(());
+        };
+        let Some(prev_frame) = images.get(&copy_frame_data.image) else {
+            return Ok(());
+        };
 
         let blue_noise = world.resource::<BlueNoise>();
         let Some(blue_noise) = images.get(&blue_noise.0) else {
@@ -182,7 +187,7 @@ impl Node for PathTraceNode {
             },
             BindGroupEntry {
                 binding: 2,
-                resource: BindingResource::TextureView(post_process.source),
+                resource: BindingResource::TextureView(&prev_frame.texture_view),
             },
             BindGroupEntry {
                 binding: 3,
@@ -259,54 +264,18 @@ impl FromWorld for TracePipeline {
 
         let mut entries = vec![
             view_entry(0),
-            // Globals
-            BindGroupLayoutEntry {
-                binding: 1,
-                visibility: ShaderStages::VERTEX_FRAGMENT,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: Some(GlobalsUniform::min_size()),
-                },
-                count: None,
-            },
-            BindGroupLayoutEntry {
-                binding: 2,
-                visibility: ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
-                ty: BindingType::Texture {
-                    sample_type: TextureSampleType::Float { filterable: true },
-                    view_dimension: TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            },
+            globals_entry(1),
+            image_entry(2, TextureViewDimension::D2),
             sampler_entry(3),
-            BindGroupLayoutEntry {
-                binding: 4,
-                visibility: ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
-                ty: BindingType::Buffer {
-                    ty: bevy::render::render_resource::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            },
-            BindGroupLayoutEntry {
-                binding: 12,
-                visibility: ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
-                ty: BindingType::Texture {
-                    sample_type: TextureSampleType::Float { filterable: true },
-                    view_dimension: TextureViewDimension::D2Array,
-                    multisampled: false,
-                },
-                count: None,
-            },
+            uniform_entry(4, Some(TraceSettings::min_size())),
+            image_entry(12, TextureViewDimension::D2Array),
             MaterialData::bind_group_layout_entry(13),
             MaterialData::bind_group_layout_entry(14),
         ];
 
         entries.append(&mut GPUBuffers::bind_group_layout_entry([5, 6, 7, 8, 9, 10, 11]).to_vec());
 
+        // Prepass
         entries.extend_from_slice(&get_bind_group_layout_entries([15, 16, 17], false));
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -369,9 +338,10 @@ fn update_settings(mut settings: Query<&mut TraceSettings>, diagnostics: Res<Dia
     }
 }
 
-#[derive(ShaderType)]
+#[derive(ShaderType, Default)]
 pub struct MaterialData {
     pub color: Vec3,
+    pub perceptual_roughness: f32,
 }
 
 impl MaterialData {
@@ -418,19 +388,19 @@ fn collect_mats(
     custom_materials: &Assets<CustomStandardMaterial>,
 ) -> Vec<MaterialData> {
     let mut material_data = Vec::new();
-    let default = vec3(1.0, 0.0, 1.0);
     for e in instance_order.iter() {
         if let Ok(mat_h) = entites.get(*e) {
             if let Some(mat) = custom_materials.get(mat_h) {
                 let c = mat.base_color.as_linear_rgba_f32();
                 material_data.push(MaterialData {
                     color: vec3(c[0], c[1], c[2]),
+                    perceptual_roughness: mat.perceptual_roughness,
                 })
             } else {
-                material_data.push(MaterialData { color: default })
+                material_data.push(MaterialData::default())
             }
         } else {
-            material_data.push(MaterialData { color: default })
+            material_data.push(MaterialData::default())
         }
     }
     material_data

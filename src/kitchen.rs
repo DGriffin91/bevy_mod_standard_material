@@ -57,7 +57,7 @@ pub fn fix_sky_brightness(
 
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(SceneBundle {
-        scene: asset_server.load("large_models/kitchen_gltf.gltf#Scene0"),
+        scene: asset_server.load("large_models/kitchen_gltf_no_window_cover.gltf#Scene0"),
         ..default()
     });
 
@@ -124,9 +124,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },
             NormalPrepass,
-            //DepthPrepass,
-            //MotionVectorPrepass,
-            TemporalAntiAliasBundle::default(),
+            DepthPrepass,
+            MotionVectorPrepass,
+            Fxaa::default(),
+            //TemporalAntiAliasBundle::default(),
             // {
             //    settings: TemporalAntiAliasSettings { reset: true },
             //    jitter: TemporalJitter { offset: Vec2::ZERO },

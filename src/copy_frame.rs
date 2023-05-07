@@ -22,7 +22,7 @@ use bevy::{
     },
 };
 
-use crate::pbr_material::CustomStandardMaterial;
+use crate::{path_trace::PathTraceNode, pbr_material::CustomStandardMaterial};
 
 pub struct CopyFramePlugin;
 impl Plugin for CopyFramePlugin {
@@ -40,7 +40,7 @@ impl Plugin for CopyFramePlugin {
             .add_render_graph_edges(
                 core_3d::graph::NAME,
                 &[
-                    core_3d::graph::node::MAIN_TRANSPARENT_PASS,
+                    PathTraceNode::NAME,
                     FrameCopyNode::NAME,
                     core_3d::graph::node::BLOOM,
                 ],
@@ -56,7 +56,7 @@ impl Plugin for CopyFramePlugin {
     }
 }
 
-struct FrameCopyNode {
+pub struct FrameCopyNode {
     query: QueryState<&'static ViewTarget, With<ExtractedView>>,
 }
 
