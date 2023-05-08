@@ -28,7 +28,6 @@ fn uniform_sample_disc(urand: vec2<f32>) -> vec3<f32> {
     return vec3(x, y, 0.0);
 }
 
-
 fn cosine_sample_hemisphere(urand: vec2<f32>) -> vec3<f32> {
     let r = sqrt(urand.x);
     let theta = urand.y * TAU;
@@ -50,6 +49,26 @@ fn r2_sequence(i: u32) -> vec2<f32> {
 fn blue_noise_for_pixel(px: vec2<u32>, layer: u32) -> f32 {
     return textureLoad(blue_noise_tex, px % BLUE_NOISE_TEX_DIMS.xy, i32(layer % BLUE_NOISE_TEX_DIMS.z), 0).x * 255.0 / 256.0 + 0.5 / 256.0;
 }
+
+fn fract_blue_noise_for_pixel(ufrag_coord: vec2<u32>, seed: u32, white_frame_noise: vec4<f32>) -> vec4<f32> {
+    return vec4(
+        fract(blue_noise_for_pixel(ufrag_coord, seed + 0u) + white_frame_noise.x),
+        fract(blue_noise_for_pixel(ufrag_coord, seed + 1u) + white_frame_noise.y),
+        fract(blue_noise_for_pixel(ufrag_coord, seed + 2u) + white_frame_noise.z),
+        fract(blue_noise_for_pixel(ufrag_coord, seed + 3u) + white_frame_noise.w)
+    );
+}
+
+fn fract_white_noise_for_pixel(ifrag_coord: vec2<i32>, seed: u32, white_frame_noise: vec4<f32>) -> vec4<f32> {
+    return vec4(
+        fract(hash_noise(ifrag_coord, seed + 0u) + white_frame_noise.x),
+        fract(hash_noise(ifrag_coord, seed + 1u) + white_frame_noise.y),
+        fract(hash_noise(ifrag_coord, seed + 2u) + white_frame_noise.z),
+        fract(hash_noise(ifrag_coord, seed + 3u) + white_frame_noise.w)
+    );
+}
+
+  
 
 //fn blue_noise_for_pixel_r2(px: vec2<u32>, n: u32) -> f32 {
 //    let offset = vec2<u32>(r2_sequence(n) * vec2<f32>(BLUE_NOISE_TEX_DIMS.xy));

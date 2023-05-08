@@ -4,6 +4,14 @@ struct Ray {
     inv_direction: vec3<f32>,
 };
 
+fn new_ray(origin: vec3<f32>, direction: vec3<f32>) -> Ray {
+    var ray: Ray;
+    ray.origin = origin;
+    ray.direction = direction;
+    ray.inv_direction = 1.0 / ray.direction;
+    return ray;
+}
+
 struct Hit {
     uv: vec2<f32>,
     distance: f32,
@@ -207,35 +215,41 @@ fn scene_query(ray: Ray) -> SceneQuery {
     let hit_static = static_traverse_tlas(ray, F32_MAX);
     let hit_dynamic = dynamic_traverse_tlas(ray, hit_static.distance);
 
+    var query: SceneQuery;
     if hit_static.distance < hit_dynamic.distance {
-        var query: SceneQuery;
         query.hit = hit_static;
         query.static_tlas = true;
-        return query;
     } else {
-        var query: SceneQuery;
         query.hit = hit_dynamic;
         query.static_tlas = false;
-        return query;
     }
+    return query;
 }
 
 // Inefficient, don't use this if getting more than normal.
-fn get_surface_normal(instance: InstanceData, hit: Hit) -> vec3<f32> {
+fn get_surface_normal(query: SceneQuery) -> vec3<f32> {
+    
+    var instance: InstanceData;
+    if query.static_tlas {
+        instance = static_mesh_instance_buffer[query.hit.instance_idx];
+    } else {
+        instance = dynamic_mesh_instance_buffer[query.hit.instance_idx];
+    }
+
     let mesh_pos_start = i32(instance.mesh_data.vert_data_start);
     let mesh_index_start = i32(instance.mesh_data.vert_idx_start);
 
-    let ind1 = i32(index_buffer[hit.triangle_idx + 0 + mesh_index_start].idx);
-    let ind2 = i32(index_buffer[hit.triangle_idx + 1 + mesh_index_start].idx);
-    let ind3 = i32(index_buffer[hit.triangle_idx + 2 + mesh_index_start].idx);
+    let ind1 = i32(index_buffer[query.hit.triangle_idx + 0 + mesh_index_start].idx);
+    let ind2 = i32(index_buffer[query.hit.triangle_idx + 1 + mesh_index_start].idx);
+    let ind3 = i32(index_buffer[query.hit.triangle_idx + 2 + mesh_index_start].idx);
     
     let a = vertex_buffer[ind1 + mesh_pos_start].normal;
     let b = vertex_buffer[ind2 + mesh_pos_start].normal;
     let c = vertex_buffer[ind3 + mesh_pos_start].normal;
 
     // Barycentric Coordinates
-    let u = hit.uv.x;
-    let v = hit.uv.y;
+    let u = query.hit.uv.x;
+    let v = query.hit.uv.y;
     var normal = u * a + v * b + (1.0 - u - v) * c;
     
     // transform local space normal into world space
@@ -245,13 +259,20 @@ fn get_surface_normal(instance: InstanceData, hit: Hit) -> vec3<f32> {
     return normal;
 }
 
-fn compute_tri_normal(instance: InstanceData, hit: Hit) -> vec3<f32> {
+fn compute_tri_normal(query: SceneQuery) -> vec3<f32> {
+    var instance: InstanceData;
+    if query.static_tlas {
+        instance = static_mesh_instance_buffer[query.hit.instance_idx];
+    } else {
+        instance = dynamic_mesh_instance_buffer[query.hit.instance_idx];
+    }
+
     let mesh_pos_start = i32(instance.mesh_data.vert_data_start);
     let mesh_index_start = i32(instance.mesh_data.vert_idx_start);
     
-    let ind1 = i32(index_buffer[hit.triangle_idx + 0 + mesh_index_start].idx);
-    let ind2 = i32(index_buffer[hit.triangle_idx + 1 + mesh_index_start].idx);
-    let ind3 = i32(index_buffer[hit.triangle_idx + 2 + mesh_index_start].idx);
+    let ind1 = i32(index_buffer[query.hit.triangle_idx + 0 + mesh_index_start].idx);
+    let ind2 = i32(index_buffer[query.hit.triangle_idx + 1 + mesh_index_start].idx);
+    let ind3 = i32(index_buffer[query.hit.triangle_idx + 2 + mesh_index_start].idx);
     
     let a = vertex_buffer[ind1 + mesh_pos_start].position;
     let b = vertex_buffer[ind2 + mesh_pos_start].position;

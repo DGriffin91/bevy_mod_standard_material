@@ -42,14 +42,6 @@ var<storage> dynamic_tlas_buffer: array<BVHData>;
 var<storage> static_mesh_instance_buffer: array<InstanceData>;
 @group(0) @binding(11)
 var<storage> dynamic_mesh_instance_buffer: array<InstanceData>;
-
-struct MaterialData {
-    color: vec3<f32>,
-    perceptual_roughness: f32,
-    metallic: f32,
-    reflectance: f32,
-}
-
 @group(0) @binding(13)
 var<storage> static_material_instance_buffer: array<MaterialData>;
 @group(0) @binding(14)
@@ -66,6 +58,18 @@ var motion_vector_prepass_texture: texture_2d<f32>;
 #import bevy_pbr::prepass_utils
 #import "shaders/pathtrace/traverse_tlas.wgsl"
 #import "shaders/pathtrace/tracing.wgsl"
+
+struct MaterialData {
+    color: vec3<f32>,
+    perceptual_roughness: f32,
+    metallic: f32,
+    reflectance: f32,
+}
+
+fn material_get_f0(material: MaterialData) -> vec3<f32> {
+    let F0 = 0.16 * material.reflectance * material.reflectance * (1.0 - material.metallic) + material.color * material.metallic;
+    return F0;
+}
 
 fn get_screen_ray(uv: vec2<f32>) -> Ray {
     var ndc = uv * 2.0 - 1.0;
@@ -117,58 +121,54 @@ fn get_hit_material(query: SceneQuery) -> MaterialData {
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let samples = 1u;
-    let sun_dir = vec3(-0.25, -0.24, 1.0);
-    let sun_color = vec3(0.95, 0.79268, 0.637758) * 7.0;
-    let sky_color = vec3(1.75, 1.9, 1.99);
+    var sun_dir = vec3(-0.25, -0.24, 1.0);
+    let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0;
+    let sky_color = vec3(1.75, 1.9, 1.99) * 2.0;
+
+    let frag_size = 1.0 / view.viewport.zw;
+
+    let white_aa_noise = white_frame_noise(653u);
+    let aa_jitter = (white_aa_noise.xy * 2.0 - 1.0) * frag_size * 0.125;
 
     let depth = prepass_depth(vec4<f32>(in.position.xy, 0.0, 0.0), 0u);
-    let surface_normal = normalize(prepass_normal(vec4<f32>(in.position.xy, 0.0, 0.0), 0u));
     let frag_coord = vec4(in.position.xy, depth, 0.0);
     let ifrag_coord = vec2<i32>(frag_coord.xy);
     let ufrag_coord = vec2<u32>(frag_coord.xy);
-    let screen_uv = frag_coord_to_uv(in.position.xy);
-    let world_position_ndc = frag_coord_to_ndc(frag_coord);
-    let world_position_ws = position_ndc_to_world(world_position_ndc) + surface_normal * 0.01;
+    let screen_uv = frag_coord_to_uv(frag_coord.xy);
 
-    var V = normalize(view.world_position.xyz - world_position_ws);
-
-
-    let tangent_to_world = build_orthonormal_basis(surface_normal);
-    var tot = vec3(0.0);
-
-    let white_frame_noise = vec4(
-        hash_noise(vec2(0), globals.frame_count + 0u), 
-        hash_noise(vec2(1), globals.frame_count + 1u),
-        hash_noise(vec2(2), globals.frame_count + 2u),
-        hash_noise(vec2(3), globals.frame_count + 3u)
-    );
-
-    if depth < 0.0001 {
-        return vec4(sky_color, 1.0);
-    }
-
-
-    //var col = textureSample(screen_tex, texture_sampler, screen_uv);
     var diffuse = vec3(0.0);
     var specular = vec3(0.0);
 
-    // Primary ray for diffuse color of this frag
+    // Primary ray for material/normal of this frag
     let primary_ray = get_screen_ray(screen_uv);
     var query = scene_query(primary_ray);
     var primary_mat: MaterialData;
     var primary_roughness = 0.0;
+    var surface_normal = vec3(0.0);
     if query.hit.distance != F32_MAX {
         primary_mat = get_hit_material(query);
         primary_roughness = perceptualRoughnessToRoughness(primary_mat.perceptual_roughness);
+        surface_normal = get_surface_normal(query);
+    } else {
+        return vec4(sky_color, 1.0);
     }
-    let F0 = 0.16 * primary_mat.reflectance * primary_mat.reflectance * (1.0 - primary_mat.metallic) + primary_mat.color * primary_mat.metallic;
 
     
+    let world_position_ws = primary_ray.origin + primary_ray.direction * query.hit.distance * 0.99999 + surface_normal * 0.00001;
+    var V = normalize(view.world_position.xyz - world_position_ws);
+
+    let F0 = material_get_f0(primary_mat);
+    let tangent_to_world = build_orthonormal_basis(surface_normal);
+    let white_frame_noise = white_frame_noise(78954u);
+
+    var direction = uniform_sample_disc(vec2(
+        fract(hash_noise(ifrag_coord, 5345u) + white_frame_noise.x),
+        fract(hash_noise(ifrag_coord, 6784u) + white_frame_noise.y),
+    )) * 0.007;
+    sun_dir = normalize(sun_dir + direction); //make the sun a disc
+    
     // Trace to sun
-    var ray: Ray;
-    ray.origin = world_position_ws;
-    ray.direction = -sun_dir;
-    ray.inv_direction = 1.0 / ray.direction;
+    var ray = new_ray(world_position_ws, -sun_dir);
     query = scene_query(ray);
     if query.hit.distance == F32_MAX {
         diffuse = sun_color * max(dot(surface_normal, -sun_dir), 0.0);    
@@ -177,28 +177,15 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     for (var i = 0u; i < samples; i += 1u) {
         let seed = i * samples + globals.frame_count * samples;
         
-        let urand = vec4(
-            fract(blue_noise_for_pixel(ufrag_coord, seed + 0u) + white_frame_noise.x),
-            fract(blue_noise_for_pixel(ufrag_coord, seed + 1u) + white_frame_noise.y),
-            fract(blue_noise_for_pixel(ufrag_coord, seed + 2u) + white_frame_noise.z),
-            fract(blue_noise_for_pixel(ufrag_coord, seed + 3u) + white_frame_noise.w)
-        );  
+        let urand = fract_blue_noise_for_pixel(ufrag_coord, seed, white_frame_noise);  
+        //let urand = fract_white_noise_for_pixel(ifrag_coord, seed, white_frame_noise);
 
-        //let urand = vec4(
-        //    fract(hash_noise(ifrag_coord, seed + 0u) + white_frame_noise.x),
-        //    fract(hash_noise(ifrag_coord, seed + 1u) + white_frame_noise.y),
-        //    fract(hash_noise(ifrag_coord, seed + 2u) + white_frame_noise.z),
-        //    fract(hash_noise(ifrag_coord, seed + 3u) + white_frame_noise.w)
-        //);  
 
         var direction = cosine_sample_hemisphere(urand.xy);
         direction = normalize(direction * tangent_to_world);
 
         // random direction trace
-        var ray: Ray;
-        ray.origin = world_position_ws;
-        ray.direction = direction;
-        ray.inv_direction = 1.0 / ray.direction;
+        var ray = new_ray(world_position_ws, direction);
         var query = scene_query(ray);
 
         var hit_pos = ray.origin + ray.direction * query.hit.distance;
@@ -214,10 +201,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
 #endif
             // Trace to sun
             if query.hit.distance != F32_MAX {
-                var sray: Ray;
-                sray.origin = hit_pos;
-                sray.direction = -sun_dir;
-                sray.inv_direction = 1.0 / sray.direction;
+                var sray = new_ray(hit_pos, -sun_dir);
                 query = scene_query(sray);
                 if query.hit.distance == F32_MAX {
                     diffuse += hit_color * sun_color;
@@ -231,15 +215,10 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
 
         // Specular
         var wo = V;
-        
         let brdf_sample = brdf_sample(primary_roughness, F0, tangent_to_world * wo, urand.zw);
         let trace_dir_ws = brdf_sample.wi * tangent_to_world;
 
-        
-        ray.origin = world_position_ws;
-        ray.direction = trace_dir_ws;
-        ray.inv_direction = 1.0 / ray.direction;
-
+        ray = new_ray(world_position_ws, trace_dir_ws);
         query = scene_query(ray);
 
         if query.hit.distance != F32_MAX {
@@ -253,10 +232,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
             } else {
 #endif
                 // Trace to sun
-                var sray: Ray;
-                sray.origin = hit_pos;
-                sray.direction = -sun_dir;
-                sray.inv_direction = 1.0 / sray.direction;
+                let sray = new_ray(hit_pos, -sun_dir);
                 query = scene_query(sray);
                 if query.hit.distance == F32_MAX {
                     // TODO we are assuming the surface we hit is not metallic
