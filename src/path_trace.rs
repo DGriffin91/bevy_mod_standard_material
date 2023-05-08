@@ -342,6 +342,8 @@ fn update_settings(mut settings: Query<&mut TraceSettings>, diagnostics: Res<Dia
 pub struct MaterialData {
     pub color: Vec3,
     pub perceptual_roughness: f32,
+    pub metallic: f32,
+    pub reflectance: f32,
 }
 
 impl MaterialData {
@@ -395,6 +397,8 @@ fn collect_mats(
                 material_data.push(MaterialData {
                     color: vec3(c[0], c[1], c[2]),
                     perceptual_roughness: mat.perceptual_roughness,
+                    metallic: mat.metallic,
+                    reflectance: mat.reflectance,
                 })
             } else {
                 material_data.push(MaterialData::default())

@@ -46,7 +46,10 @@ var<storage> dynamic_mesh_instance_buffer: array<InstanceData>;
 struct MaterialData {
     color: vec3<f32>,
     perceptual_roughness: f32,
+    metallic: f32,
+    reflectance: f32,
 }
+
 @group(0) @binding(13)
 var<storage> static_material_instance_buffer: array<MaterialData>;
 @group(0) @binding(14)
@@ -99,19 +102,23 @@ fn get_screen_color_from_pos(hit_pos: vec3<f32>, ray_direction: vec3<f32>) -> ve
     return vec3(-1.0);
 }
 
-fn get_hit_color(query: SceneQuery) -> vec3<f32> {
+fn get_hit_material(query: SceneQuery) -> MaterialData {
     if query.static_tlas {
-        return static_material_instance_buffer[query.hit.instance_idx].color;
+        return static_material_instance_buffer[query.hit.instance_idx];
     } else {
-        return dynamic_material_instance_buffer[query.hit.instance_idx].color;
+        return dynamic_material_instance_buffer[query.hit.instance_idx];
     }
 }
+
+// comment out to disable
+#define SPECULAR_SCREEN_SAMPLE
+#define DIFFUSE_SCREEN_SAMPLE
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let samples = 1u;
     let sun_dir = vec3(-0.25, -0.24, 1.0);
-    let sun_color = vec3(0.95, 0.79268, 0.637758) * 5.0;
+    let sun_color = vec3(0.95, 0.79268, 0.637758) * 7.0;
     let sky_color = vec3(1.75, 1.9, 1.99);
 
     let depth = prepass_depth(vec4<f32>(in.position.xy, 0.0, 0.0), 0u);
@@ -121,7 +128,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let ufrag_coord = vec2<u32>(frag_coord.xy);
     let screen_uv = frag_coord_to_uv(in.position.xy);
     let world_position_ndc = frag_coord_to_ndc(frag_coord);
-    let world_position_ws = position_ndc_to_world(world_position_ndc) + surface_normal * 0.0001;
+    let world_position_ws = position_ndc_to_world(world_position_ndc) + surface_normal * 0.01;
 
     var V = normalize(view.world_position.xyz - world_position_ws);
 
@@ -136,26 +143,25 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         hash_noise(vec2(3), globals.frame_count + 3u)
     );
 
+    if depth < 0.0001 {
+        return vec4(sky_color, 1.0);
+    }
+
 
     //var col = textureSample(screen_tex, texture_sampler, screen_uv);
-    var col = vec3(0.0);
+    var diffuse = vec3(0.0);
+    var specular = vec3(0.0);
 
     // Primary ray for diffuse color of this frag
     let primary_ray = get_screen_ray(screen_uv);
     var query = scene_query(primary_ray);
-    var primary_diffuse_color = sky_color;
+    var primary_mat: MaterialData;
     var primary_roughness = 0.0;
     if query.hit.distance != F32_MAX {
-        if query.static_tlas {
-            let material = static_material_instance_buffer[query.hit.instance_idx];
-            primary_diffuse_color = material.color;
-            primary_roughness = perceptualRoughnessToRoughness(material.perceptual_roughness);
-        } else {
-            let material = dynamic_material_instance_buffer[query.hit.instance_idx];
-            primary_diffuse_color = material.color;
-            primary_roughness = perceptualRoughnessToRoughness(material.perceptual_roughness);
-        }
+        primary_mat = get_hit_material(query);
+        primary_roughness = perceptualRoughnessToRoughness(primary_mat.perceptual_roughness);
     }
+    let F0 = 0.16 * primary_mat.reflectance * primary_mat.reflectance * (1.0 - primary_mat.metallic) + primary_mat.color * primary_mat.metallic;
 
     
     // Trace to sun
@@ -165,7 +171,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     ray.inv_direction = 1.0 / ray.direction;
     query = scene_query(ray);
     if query.hit.distance == F32_MAX {
-        col = sun_color * primary_diffuse_color;    
+        diffuse = sun_color * max(dot(surface_normal, -sun_dir), 0.0);    
     }
 
     for (var i = 0u; i < samples; i += 1u) {
@@ -196,14 +202,16 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         var query = scene_query(ray);
 
         var hit_pos = ray.origin + ray.direction * query.hit.distance;
-        var hit_color = get_hit_color(query);
+        var hit_color = get_hit_material(query).color;
 
         // first see if we hit somewhere on the screen
+#ifdef DIFFUSE_SCREEN_SAMPLE
         let ray_hit_pos = ray.origin + ray.direction * query.hit.distance;
         let screen_color = get_screen_color_from_pos(ray_hit_pos, ray.direction);
         if screen_color.x != -1.0 {
-            col += primary_diffuse_color * screen_color;
+            diffuse += screen_color;
         } else {
+#endif
             // Trace to sun
             if query.hit.distance != F32_MAX {
                 var sray: Ray;
@@ -212,23 +220,19 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
                 sray.inv_direction = 1.0 / sray.direction;
                 query = scene_query(sray);
                 if query.hit.distance == F32_MAX {
-                    col += hit_color * primary_diffuse_color * sun_color;
-                } else {
-                    // if we missed sun, see if we hit somewhere on the screen
-                    let sray_hit_pos = sray.origin + sray.direction * query.hit.distance;
-                    let screen_color = get_screen_color_from_pos(sray_hit_pos, sray.direction);
-                    if screen_color.x != -1.0 {
-                        col += hit_color * primary_diffuse_color * screen_color;
-                    }
+                    diffuse += hit_color * sun_color;
                 }
             } else {
-                col += hit_color * primary_diffuse_color * sky_color;    
+                diffuse += hit_color * sky_color;    
             }
+#ifdef DIFFUSE_SCREEN_SAMPLE
         }
+#endif
 
         // Specular
         var wo = V;
-        let brdf_sample = brdf_sample(primary_roughness, primary_diffuse_color, tangent_to_world * wo, urand.zw);
+        
+        let brdf_sample = brdf_sample(primary_roughness, F0, tangent_to_world * wo, urand.zw);
         let trace_dir_ws = brdf_sample.wi * tangent_to_world;
 
         
@@ -239,14 +243,15 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         query = scene_query(ray);
 
         if query.hit.distance != F32_MAX {
-            var hit_color = get_hit_color(query);
-
+            var hit_color = get_hit_material(query).color;
+#ifdef SPECULAR_SCREEN_SAMPLE
             // first see if we hit somewhere on the screen
             let ray_hit_pos = ray.origin + ray.direction * query.hit.distance;
             let screen_color = get_screen_color_from_pos(ray_hit_pos, ray.direction);
             if screen_color.x != -1.0 {
-                col += primary_diffuse_color * screen_color * brdf_sample.value_over_pdf;
+                specular += screen_color * brdf_sample.value_over_pdf;
             } else {
+#endif
                 // Trace to sun
                 var sray: Ray;
                 sray.origin = hit_pos;
@@ -254,16 +259,21 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
                 sray.inv_direction = 1.0 / sray.direction;
                 query = scene_query(sray);
                 if query.hit.distance == F32_MAX {
-                    col += hit_color * primary_diffuse_color * sun_color * brdf_sample.value_over_pdf;
+                    // TODO we are assuming the surface we hit is not metallic
+                    specular += sun_color * brdf_sample.value_over_pdf;
                 }
+#ifdef SPECULAR_SCREEN_SAMPLE
             }
+#endif
         } else {
-            // TODO leaking
-            col += max(sky_color * brdf_sample.value_over_pdf, vec3(0.0));    
+            specular += max(sky_color * brdf_sample.value_over_pdf, vec3(0.0));    
         }
 
     }
-    col /= f32(samples);
+    diffuse /= f32(samples);
+    specular /= f32(samples);
+
+    let col = diffuse * primary_mat.color + specular;
 
 
 
