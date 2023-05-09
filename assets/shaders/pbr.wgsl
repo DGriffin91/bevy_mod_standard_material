@@ -27,6 +27,7 @@ var prev_frame_sampler: sampler;
 #import "shaders/bad_ssgi.wgsl"
 #import "shaders/bad_ssr.wgsl"
 #import "shaders/bad_gtao.wgsl"
+#import "shaders/not_restir.wgsl"
 #import "shaders/shadows.wgsl"
 #import bevy_pbr::fog
 //#import bevy_pbr::pbr_functions
@@ -166,7 +167,7 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     let history_uv = (in.frag_coord.xy / view.viewport.zw) - closest_motion_vector;
 
     let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
-    return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
+    return vec4(mix(last_image, output_color.rgb, 0.01), output_color.a);
 
     
 
