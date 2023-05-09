@@ -40,7 +40,7 @@ impl Plugin for CopyFramePlugin {
             .add_render_graph_edges(
                 core_3d::graph::NAME,
                 &[
-                    PathTraceNode::NAME,
+                    core_3d::graph::node::END_MAIN_PASS,
                     FrameCopyNode::NAME,
                     core_3d::graph::node::BLOOM,
                 ],

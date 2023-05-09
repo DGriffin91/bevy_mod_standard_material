@@ -1,5 +1,5 @@
 use crate::{
-    copy_frame::CopyFrameData,
+    copy_frame::{CopyFrameData, FrameCopyNode},
     pbr_material::{BlueNoise, CustomStandardMaterial},
 };
 use bevy::{
@@ -63,7 +63,7 @@ impl Plugin for PathTracePlugin {
                 &[
                     core_3d::graph::node::END_MAIN_PASS,
                     PathTraceNode::NAME,
-                    core_3d::graph::node::BLOOM,
+                    FrameCopyNode::NAME,
                 ],
             );
     }

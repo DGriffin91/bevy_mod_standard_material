@@ -6,12 +6,6 @@ fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: ve
     let depth_thickness = 1.5;
     let trace_dist = 8.0;
 
-    // Kitchen opt
-    //let samples = 8u;
-    //let linear_steps = 2u;
-    //let bisection_steps = 2u;
-    //let depth_thickness = 1.5;
-    //let trace_dist = 7.0;
 
     let surface_normal = normalize(surface_normal);
     let ifrag_coord = vec2<i32>(frag_coord.xy);
@@ -23,11 +17,7 @@ fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: ve
     let TBN = build_orthonormal_basis(surface_normal);
     var tot = vec3(0.0);
 
-    let white_frame_noise = vec3(
-        hash_noise(vec2(0), globals.frame_count + 0u), 
-        hash_noise(vec2(1), globals.frame_count + 1u),
-        hash_noise(vec2(2), globals.frame_count + 2u)
-    );
+    let white_frame_noise = white_frame_noise(8492u);
 
     var dmr = DepthRayMarch_new_from_depth(depth_tex_dims);
     dmr.ray_start_cs = ray_start_ndc;
@@ -41,35 +31,13 @@ fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: ve
     for (var i = 0u; i < samples; i += 1u) {
         let seed = i * samples + globals.frame_count * samples;
 
-        
-//        var direction = cosine_sample_hemisphere(vec2(
-//            hash_noise(ifrag_coord, i + globals.frame_count),
-//            hash_noise(ifrag_coord, i + 64u * 64u + globals.frame_count)
-//        ));
-//        var direction = cosine_sample_hemisphere(vec2(
-//            blue_noise_for_pixel(ufrag_coord, i * 2u + 0u),
-//            blue_noise_for_pixel(ufrag_coord, i * 2u + 1u),
-//        ));
-//        direction = normalize(surface_normal + direction);
+        let urand = fract_blue_noise_for_pixel(ufrag_coord, seed, white_frame_noise);  
+        //let urand = fract_white_noise_for_pixel(ifrag_coord, seed, white_frame_noise); 
 
-        var direction = cosine_sample_hemisphere(vec2(
-            fract(blue_noise_for_pixel(ufrag_coord, seed + 0u) + white_frame_noise.x),
-            fract(blue_noise_for_pixel(ufrag_coord, seed + 1u) + white_frame_noise.y),
-        ));
-
-        //var direction = cosine_sample_hemisphere(vec2(
-        //    hash_noise(ifrag_coord, seed + 0u),
-        //    hash_noise(ifrag_coord, seed + 1u),
-        //));
+        var direction = cosine_sample_hemisphere(urand.xy);
 
         let jitter = fract(blue_noise_for_pixel(ufrag_coord, seed + 2u) + white_frame_noise.z);
         //let jitter = hash_noise(ifrag_coord, seed + 2u);
-
-        
-//        var direction = cosine_sample_hemisphere(vec2(
-//            fract(blue_noise_for_pixel(vec2<u32>((world_position.xy + world_position.z + vec2(1234.0, 2345.0)) * 256.0), i * samples + 0u) + white_frame_noise.x),
-//            fract(blue_noise_for_pixel(vec2<u32>((world_position.xz + world_position.y + vec2(3456.0, 7890.0)) * 256.0), i * samples + 1u) + white_frame_noise.y),
-//        ));
         
         direction = normalize(direction * TBN);
 

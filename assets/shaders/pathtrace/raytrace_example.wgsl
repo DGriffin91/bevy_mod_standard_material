@@ -255,8 +255,8 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
 
     let closest_motion_vector = prepass_motion_vector(frag_coord, 0u).xy;
     let history_uv = (frag_coord.xy / view.viewport.zw) - closest_motion_vector;
-    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, screen_uv, 0.0).rgb;
-    return vec4(mix(last_image, col, 0.01), 1.0);
+    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
+    return vec4(mix(last_image, col, 1.0), 1.0);
 }
 
 /*
