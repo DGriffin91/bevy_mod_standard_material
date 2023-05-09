@@ -1,7 +1,7 @@
 
 fn bad_ssgi(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: vec3<f32>, sample_index: u32) -> vec4<f32> {
     let samples = 1u;
-    let linear_steps = 8u;
+    let linear_steps = 32u;
     let bisection_steps = 4u;
     let depth_thickness = 1.5;
     let trace_dist = 8.0;

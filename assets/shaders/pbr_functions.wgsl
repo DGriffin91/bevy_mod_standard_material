@@ -246,12 +246,13 @@ fn pbr(
     var indirect_light = ambient_light(in.world_position, in.N, in.V, NdotV, diffuse_color, F0, perceptual_roughness, occlusion);
 
     // BAD SSGI
-//    var ssgi = bad_ssgi(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
-//    indirect_light += ssgi * diffuse_color;
+    //var ssgi = bad_ssgi(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
+    //indirect_light += ssgi * diffuse_color;
 
     // NOT RESTIR
-    var ssgi = not_restir(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
-    indirect_light += ssgi * diffuse_color;
+    var not_restir = not_restir(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
+    indirect_light += not_restir * diffuse_color;
+
 
     
 //    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal);
