@@ -21,7 +21,7 @@ var<uniform> globals: Globals;
 @group(0) @binding(2)
 var prev_frame_tex: texture_2d<f32>;
 @group(0) @binding(3)
-var prev_frame_sampler: sampler;
+var linear_sampler: sampler;
 struct TraceSettings {
     frame: u32,
     fps: f32,
@@ -54,6 +54,8 @@ var normal_prepass_texture: texture_2d<f32>;
 @group(0) @binding(17)
 var motion_vector_prepass_texture: texture_2d<f32>;
 @group(0) @binding(18)
+var prev_tex: texture_2d<f32>;
+@group(0) @binding(19)
 var target_tex: texture_storage_2d<rgba16float, write>;
 
 #import bevy_coordinate_systems::transformations
@@ -101,7 +103,7 @@ fn get_screen_color_from_pos(hit_pos: vec3<f32>, ray_direction: vec3<f32>) -> ve
             let hit_n = normalize(prepass_normal(vec4<f32>(hit_uv * view.viewport.zw, 0.0, 0.0), 0u));
             let backface = dot(hit_n, ray_direction);
             if backface < 0.01 {
-                return textureSampleLevel(prev_frame_tex, prev_frame_sampler, hit_uv, 0.0).rgb;
+                return textureSampleLevel(prev_frame_tex, linear_sampler, hit_uv, 0.0).rgb;
             }
         }
     }
@@ -119,20 +121,31 @@ fn get_hit_material(query: SceneQuery) -> MaterialData {
 // comment out to disable
 #define SPECULAR_SCREEN_SAMPLE
 #define DIFFUSE_SCREEN_SAMPLE
+//#define SPECULAR
+#define DIFFUSE_INDIRECT
+#define DIFFUSE_DIRECT
 
 
 
 @compute @workgroup_size(8, 8, 1)
 fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
+
     let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
     let flocation = vec2<f32>(location);
 
+    
+
+    let target_dims = textureDimensions(target_tex).xy;
+    let ftarget_dims = vec2<f32>(target_dims);
+
     let samples = 1u;
-    var sun_dir = vec3(-0.25, -0.24, 1.0);
-    let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0;
+    //var sun_dir = vec3(-0.25, -0.24, 1.0);
+    //let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0;
+    var sun_dir = vec3(0.22, -1.0, -0.2); //sponza
+    let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0; //sponza
     let sky_color = vec3(1.75, 1.9, 1.99) * 2.0;
 
-    let frag_size = 1.0 / view.viewport.zw;
+    let frag_size = 1.0 / ftarget_dims;
 
     let white_aa_noise = white_frame_noise(653u);
     let aa_jitter = (white_aa_noise.xy * 2.0 - 1.0) * frag_size * 0.125;
@@ -141,9 +154,12 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let frag_coord = vec4(flocation, depth, 0.0);
     let ifrag_coord = vec2<i32>(frag_coord.xy);
     let ufrag_coord = vec2<u32>(frag_coord.xy);
-    let screen_uv = frag_coord_to_uv(frag_coord.xy);
+    let screen_uv = frag_coord.xy / ftarget_dims;
+    
 
-    var diffuse = vec3(0.0);
+
+    var diffuse_direct = vec3(0.0);
+    var diffuse_indirect = vec3(0.0);
     var specular = vec3(0.0);
 
     // Primary ray for material/normal of this frag
@@ -174,13 +190,15 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         fract(hash_noise(ifrag_coord, 6784u) + white_frame_noise.y),
     )) * 0.007;
     sun_dir = normalize(sun_dir + direction); //make the sun a disc
-    
+
+#ifdef DIFFUSE_DIRECT
     // Trace to sun
     var ray = new_ray(world_position_ws, -sun_dir);
     query = scene_query(ray);
     if query.hit.distance == F32_MAX {
-        diffuse = sun_color * max(dot(surface_normal, -sun_dir), 0.0);    
+        diffuse_direct = sun_color * max(dot(surface_normal, -sun_dir), 0.0);    
     }
+#endif
 
     for (var i = 0u; i < samples; i += 1u) {
         let seed = i * samples + globals.frame_count * samples;
@@ -198,13 +216,13 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
         var hit_pos = ray.origin + ray.direction * query.hit.distance;
         var hit_color = get_hit_material(query).color;
-
+#ifdef DIFFUSE_INDIRECT
         // first see if we hit somewhere on the screen
 #ifdef DIFFUSE_SCREEN_SAMPLE
         let ray_hit_pos = ray.origin + ray.direction * query.hit.distance;
         let screen_color = get_screen_color_from_pos(ray_hit_pos, ray.direction);
         if screen_color.x != -1.0 {
-            diffuse += screen_color;
+            diffuse_indirect += screen_color;
         } else {
 #endif
             // Trace to sun
@@ -212,15 +230,17 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
                 var sray = new_ray(hit_pos, -sun_dir);
                 query = scene_query(sray);
                 if query.hit.distance == F32_MAX {
-                    diffuse += hit_color * sun_color;
+                    diffuse_indirect += hit_color * sun_color;
                 }
             } else {
-                diffuse += hit_color * sky_color;    
+                diffuse_indirect += hit_color * sky_color;    
             }
 #ifdef DIFFUSE_SCREEN_SAMPLE
         }
 #endif
+#endif //DIFFUSE_INDIRECT
 
+#ifdef SPECULAR
         // Specular
         var wo = V;
         let brdf_sample = brdf_sample(primary_roughness, F0, tangent_to_world * wo, urand.zw);
@@ -252,19 +272,31 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         } else {
             specular += max(sky_color * brdf_sample.value_over_pdf, vec3(0.0));    
         }
+#endif // SPECULAR
 
     }
-    diffuse /= f32(samples);
+
+    diffuse_indirect /= f32(samples);
+    var col = diffuse_indirect * primary_mat.color + diffuse_direct * primary_mat.color;
+    //var col = diffuse_indirect + diffuse_direct;
+    
+#ifdef SPECULAR
     specular /= f32(samples);
+    col += specular;
+#endif
 
-    let col = diffuse * primary_mat.color + specular;
 
 
+    //let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
+    var closest_motion_vector = vec2(0.0);
+    closest_motion_vector += prepass_motion_vector(vec4(frag_coord.xy * 4.0 + vec2(0.0, 0.0), 0.0, 0.0), 0u).xy;
+    closest_motion_vector += prepass_motion_vector(vec4(frag_coord.xy * 4.0 + vec2(0.0, 1.0), 0.0, 0.0), 0u).xy;
+    closest_motion_vector += prepass_motion_vector(vec4(frag_coord.xy * 4.0 + vec2(1.0, 0.0), 0.0, 0.0), 0u).xy;
+    closest_motion_vector += prepass_motion_vector(vec4(frag_coord.xy * 4.0 + vec2(1.0, 1.0), 0.0, 0.0), 0u).xy;
+    let history_uv = screen_uv - closest_motion_vector / 4.0;
 
-    let closest_motion_vector = prepass_motion_vector(frag_coord, 0u).xy;
-    let history_uv = screen_uv - closest_motion_vector;
-    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
-    textureStore(target_tex, vec2<i32>(screen_uv * view.viewport.zw), vec4(mix(last_image, col, 1.0), 1.0));
+    let prev_target_frame = textureSampleLevel(prev_tex, linear_sampler, history_uv + frag_size * 0.5, 0.0).rgb;
+    textureStore(target_tex, location, vec4(mix(prev_target_frame, col, 0.1), 1.0));
 }
 
 /*

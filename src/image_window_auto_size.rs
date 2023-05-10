@@ -11,13 +11,12 @@ pub trait ImageUpdate {
 
 pub trait FrameData {
     fn image_h(&self) -> Handle<Image>;
-    fn set_image_h(&mut self, image_h: Handle<Image>);
-    fn bytes(&self, width: u32, height: u32) -> Vec<u8>;
-    fn size(&self, width: u32, height: u32) -> Extent3d;
+    fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>);
+    fn size(&self, width: u32, height: u32) -> (u32, u32);
 }
 
 pub fn auto_resize_image<A: Asset + ImageUpdate, T: Resource + FrameData + TypeUuid>(
-    mut frame_data: ResMut<T>,
+    frame_data: Res<T>,
     mut images: ResMut<Assets<Image>>,
     windows: Query<&Window>,
     mut custom_materials: ResMut<Assets<A>>,
@@ -34,16 +33,13 @@ pub fn auto_resize_image<A: Asset + ImageUpdate, T: Resource + FrameData + TypeU
     if w == 0 || h == 0 {
         return;
     }
-
-    if image.size() != vec2(w as f32, h as f32) {
-        let mut image = image.clone();
-        image.data = frame_data.bytes(w as u32, h as u32);
-        image.texture_descriptor.size = frame_data.size(w as u32, h as u32);
-        let image_h = images.add(image);
+    let img_size = image.size();
+    if (img_size.x as u32, img_size.y as u32) != frame_data.size(w, h) {
+        frame_data.resize(w, h, &mut images);
+        let image_h = frame_data.image_h();
         for (_, mat) in custom_materials.iter_mut() {
             mat.update(&T::TYPE_UUID, image_h.clone());
         }
-        frame_data.set_image_h(image_h.clone());
         // whyyyyyyyyyyyyyyyyyy
     }
 }

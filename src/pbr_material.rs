@@ -508,7 +508,7 @@ pub fn swap_standard_material(
                 prev_image: Some(copy_frame_data.image.clone()),
                 prepass_downsample: Some(prepass_downsample.0.clone()),
                 pathtrace_output: if let Some(ref res) = pathtrace_target_img {
-                    Some(res.0.clone())
+                    Some(res.current_img.clone())
                 } else {
                     None
                 },

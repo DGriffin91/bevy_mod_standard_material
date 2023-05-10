@@ -300,20 +300,19 @@ impl FrameData for PrepassDownsampleImage {
         self.0.clone()
     }
 
-    fn set_image_h(&mut self, image_h: Handle<Image>) {
-        self.0 = image_h;
+    fn size(&self, width: u32, height: u32) -> (u32, u32) {
+        (width, height)
     }
 
-    fn bytes(&self, width: u32, height: u32) -> Vec<u8> {
-        vec![0; get_image_bytes_count(width, height, MIP_LEVELS, 4, 4)]
-    }
-
-    fn size(&self, width: u32, height: u32) -> Extent3d {
-        Extent3d {
+    fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>) {
+        let mut image = images.get_mut(&self.0).unwrap();
+        image.texture_descriptor.size = Extent3d {
             width,
             height,
             depth_or_array_layers: 1,
-        }
+        };
+        image.data = vec![0; get_image_bytes_count(width, height, MIP_LEVELS, 4, 4)];
+        //self.0 = images.add(image);
     }
 }
 

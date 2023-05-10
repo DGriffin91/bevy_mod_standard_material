@@ -7,8 +7,9 @@ use crate::{
 use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
+        experimental::taa::TemporalAntiAliasBundle,
         fxaa::Fxaa,
-        prepass::{DepthPrepass, NormalPrepass},
+        prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
     pbr::CascadeShadowConfigBuilder,
@@ -202,8 +203,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 }),
                 ..default()
             },
-            DepthPrepass,
             NormalPrepass,
+            //DepthPrepass,
+            //MotionVectorPrepass,
+            TemporalAntiAliasBundle::default(),
             bloom_settings,
             CameraController {
                 walk_speed: 1.0,

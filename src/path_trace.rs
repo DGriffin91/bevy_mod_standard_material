@@ -1,16 +1,15 @@
 use std::borrow::Cow;
 
 use crate::{
-    copy_frame::{CopyFrameData, FrameCopyNode},
+    copy_frame::CopyFrameData,
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
     pbr_material::{BlueNoise, CustomStandardMaterial},
-    prepass_downsample::prepass_get_bind_group_layout_entries,
+    prepass_downsample::{prepass_get_bind_group_layout_entries, PrepassDownsampleNode},
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
     diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
     math::vec3,
-    pbr::get_bind_group_layout_entries,
     prelude::*,
     reflect::TypeUuid,
     render::{
@@ -23,11 +22,10 @@ use bevy::{
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-            BindingResource, CachedComputePipelineId, CachedRenderPipelineId,
-            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, FilterMode, Operations,
-            PipelineCache, RenderPassColorAttachment, RenderPassDescriptor, Sampler,
-            SamplerDescriptor, ShaderType, StorageBuffer, TextureDescriptor, TextureDimension,
-            TextureFormat, TextureUsages, TextureViewDimension,
+            BindingResource, CachedComputePipelineId, CommandEncoderDescriptor,
+            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache,
+            Sampler, SamplerDescriptor, ShaderType, StorageBuffer, TextureDescriptor,
+            TextureDimension, TextureFormat, TextureUsages, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice, RenderQueue},
         texture::ImageSampler,
@@ -76,9 +74,9 @@ impl Plugin for PathTracePlugin {
             .add_render_graph_edges(
                 core_3d::graph::NAME,
                 &[
-                    core_3d::graph::node::END_MAIN_PASS,
+                    PrepassDownsampleNode::NAME,
                     PathTraceNode::NAME,
-                    core_3d::graph::node::BLOOM,
+                    core_3d::graph::node::MAIN_OPAQUE_PASS,
                 ],
             );
     }
@@ -138,7 +136,10 @@ impl Node for PathTraceNode {
         let Some(pathtrace_target) = world.get_resource::<PathTraceTargetImage>() else {
             return Ok(());
         };
-        let Some(target_image) = images.get(&pathtrace_target.0) else {
+        let Some(target_image) = images.get(&pathtrace_target.current_img) else {
+            return Ok(());
+        };
+        let Some(prev_image) = images.get(&pathtrace_target.prev_img) else {
             return Ok(());
         };
 
@@ -193,8 +194,6 @@ impl Node for PathTraceNode {
             return Ok(());
         };
 
-        let post_process = view_target.post_process_write();
-
         let depth_binding = prepass_textures.depth.as_ref().unwrap();
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
@@ -246,6 +245,10 @@ impl Node for PathTraceNode {
             },
             BindGroupEntry {
                 binding: 18,
+                resource: BindingResource::TextureView(&prev_image.texture_view),
+            },
+            BindGroupEntry {
+                binding: 19,
                 resource: BindingResource::TextureView(&target_image.texture_view),
             },
         ];
@@ -259,18 +262,30 @@ impl Node for PathTraceNode {
                 layout: &path_trace_pipeline.layout,
                 entries: &entries,
             });
+        {
+            let mut pass = render_context
+                .command_encoder()
+                .begin_compute_pass(&ComputePassDescriptor::default());
 
-        let mut pass = render_context
-            .command_encoder()
-            .begin_compute_pass(&ComputePassDescriptor::default());
-
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
-        pass.dispatch_workgroups(
-            prev_frame.size.x as u32 / WORKGROUP_SIZE,
-            prev_frame.size.y as u32 / WORKGROUP_SIZE,
-            1,
-        );
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
+            pass.dispatch_workgroups(
+                target_image.size.x as u32 / WORKGROUP_SIZE,
+                target_image.size.y as u32 / WORKGROUP_SIZE,
+                1,
+            );
+        }
+        {
+            render_context.command_encoder().copy_texture_to_texture(
+                target_image.texture.as_image_copy(),
+                prev_image.texture.as_image_copy(),
+                Extent3d {
+                    width: target_image.size.x as u32,
+                    height: target_image.size.y as u32,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
 
         Ok(())
     }
@@ -296,7 +311,8 @@ impl FromWorld for TracePipeline {
             image_entry(12, TextureViewDimension::D2Array),
             MaterialData::bind_group_layout_entry(13),
             MaterialData::bind_group_layout_entry(14),
-            storage_tex_write(18, TextureFormat::Rgba16Float, TextureViewDimension::D2),
+            image_entry(18, TextureViewDimension::D2),
+            storage_tex_write(19, TextureFormat::Rgba16Float, TextureViewDimension::D2),
         ];
 
         entries.append(&mut GPUBuffers::bind_group_layout_entry([5, 6, 7, 8, 9, 10, 11]).to_vec());
@@ -441,40 +457,34 @@ fn collect_mats(
 
 #[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
 #[uuid = "c235dff3-905c-4e88-9e0e-fb1c76de1322"]
-pub struct PathTraceTargetImage(pub Handle<Image>);
+pub struct PathTraceTargetImage {
+    pub current_img: Handle<Image>,
+    pub prev_img: Handle<Image>,
+}
 
-fn setup_image(
-    mut commands: Commands,
-    windows: Query<&Window>,
-    mut images: ResMut<Assets<Image>>,
-    msaa: Res<Msaa>,
-) {
+fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResMut<Assets<Image>>) {
     let window = windows.single();
     let size = Extent3d {
-        width: window.physical_width(),
-        height: window.physical_height(),
+        width: window.physical_width() / 4,
+        height: window.physical_height() / 4,
         depth_or_array_layers: 1,
     };
-
     let img = Image {
-        data: vec![0; get_image_bytes_count(size.width as u32, size.height as u32, 1, 4, 4)],
+        data: vec![0; get_image_bytes_count(size.width, size.height, 1, 2, 4)],
         texture_descriptor: TextureDescriptor {
             dimension: TextureDimension::D2,
             format: TextureFormat::Rgba16Float,
-            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
+            usage: TextureUsages::STORAGE_BINDING
+                | TextureUsages::TEXTURE_BINDING
+                | TextureUsages::COPY_SRC,
             view_formats: &[TextureFormat::Rgba16Float],
             label: None,
             size,
             mip_level_count: 1,
-            sample_count: match *msaa {
-                Msaa::Off => 1,
-                Msaa::Sample2 => 2,
-                Msaa::Sample4 => 4,
-                Msaa::Sample8 => 8,
-            },
+            sample_count: 1,
         },
         sampler_descriptor: ImageSampler::Descriptor(SamplerDescriptor {
-            label: Some("copy_image_sampler_descriptor"),
+            label: Some("path_trace_sampler_descriptor"),
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Linear,
             mipmap_filter: FilterMode::Linear,
@@ -482,28 +492,34 @@ fn setup_image(
         }),
         texture_view_descriptor: None,
     };
+    let img2 = img.clone();
 
-    commands.insert_resource(PathTraceTargetImage(images.add(img)));
+    commands.insert_resource(PathTraceTargetImage {
+        current_img: images.add(img),
+        prev_img: images.add(img2),
+    });
 }
 
 impl FrameData for PathTraceTargetImage {
     fn image_h(&self) -> Handle<Image> {
-        self.0.clone()
+        self.current_img.clone()
     }
 
-    fn set_image_h(&mut self, image_h: Handle<Image>) {
-        self.0 = image_h;
+    fn size(&self, width: u32, height: u32) -> (u32, u32) {
+        (width / 4, height / 4)
     }
 
-    fn bytes(&self, width: u32, height: u32) -> Vec<u8> {
-        vec![0; get_image_bytes_count(width, height, 1, 4, 4)]
-    }
-
-    fn size(&self, width: u32, height: u32) -> Extent3d {
-        Extent3d {
-            width,
-            height,
+    fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>) {
+        let size: (u32, u32) = self.size(width, height);
+        let image = images.get_mut(&self.current_img).unwrap();
+        image.texture_descriptor.size = Extent3d {
+            width: size.0,
+            height: size.1,
             depth_or_array_layers: 1,
-        }
+        };
+        image.data = vec![0; get_image_bytes_count(size.0, size.1, 1, 2, 4)];
+        let img2 = image.clone();
+        let image2 = images.get_mut(&self.prev_img).unwrap();
+        *image2 = img2;
     }
 }

@@ -56,6 +56,7 @@ fn bad_ssr(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: vec
         dmr.march_behind_surfaces = false;
         dmr.use_secant = true;
         dmr.bisection_steps = 4u;
+        dmr.mip_min_max = vec2(3.0, 3.0);
 
         let raymarch_result = march(dmr, sample_index);
         var contribution = vec3(0.0);
@@ -66,7 +67,11 @@ fn bad_ssr(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: vec
                 let closest_motion_vector = prepass_motion_vector(vec4<f32>(raymarch_result.hit_uv * depth_tex_dims, 0.0, 0.0), sample_index).xy;
                 let history_uv = raymarch_result.hit_uv - closest_motion_vector;
                 if history_uv.x > 0.0 && history_uv.x < 1.0 && history_uv.y > 0.0 && history_uv.y < 1.0 {
-                    contribution = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
+                    //contribution = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
+                    
+                    //let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0.0).rgb);
+                    let prev_frame = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 3.0).rgb;
+                    contribution += prev_frame;//mix(prev_frame, pt_image, raymarch_result.hit_t);
                 }
             }
         }

@@ -44,13 +44,14 @@ struct DepthRaymarchDistanceFn {
     depth_tex_size: vec2<f32>,
     sample_index: u32,
     depth_thickness: f32,
+    mip_min_max: vec2<f32>,
     march_behind_surfaces: bool,
     use_bilinear: bool,
 }
 
 // Returns: penetration 
 // Conservative estimate of depth to which the ray penetrates the marched surface.
-fn distance_fn(_this_: DepthRaymarchDistanceFn, ray_point_cs: vec3<f32>) -> DistanceWithPenetration {
+fn distance_fn(_this_: DepthRaymarchDistanceFn, ray_point_cs: vec3<f32>, candidate_t: f32) -> DistanceWithPenetration {
     let interp_uv = cs_to_uv(ray_point_cs.xy);
 
     let ray_depth = 1.0 / ray_point_cs.z;
@@ -91,18 +92,19 @@ fn distance_fn(_this_: DepthRaymarchDistanceFn, ray_point_cs: vec3<f32>) -> Dist
     // );
     
 
-    let unfiltered_depth = 1.0 / prepass_depth(vec4<f32>(interp_uv * _this_.depth_tex_size, 0.0, 0.0), _this_.sample_index);
-    //let MIP = 1;
-    //let mip_scale = pow(2.0, f32(MIP));
-    //let unfiltered_depth = 1.0 / textureLoad(prepass_downsample, vec2<i32>(interp_uv * (_this_.depth_tex_size / mip_scale)), MIP).w;
+    //let unfiltered_depth = 1.0 / prepass_depth(vec4<f32>(interp_uv * _this_.depth_tex_size, 0.0, 0.0), _this_.sample_index);
+    let FMIP = mix(_this_.mip_min_max.x, _this_.mip_min_max.y, saturate(candidate_t));
+    let MIP = i32(FMIP); //TODO figure out something more correct
+    let mip_scale = pow(2.0, f32(MIP));
+    let unfiltered_depth = 1.0 / textureLoad(prepass_downsample, vec2<i32>(interp_uv * (_this_.depth_tex_size / mip_scale)), MIP).w;
 
     var max_depth = unfiltered_depth;
     var min_depth = unfiltered_depth;
 
     if _this_.use_bilinear {
-        let linear_depth = 1.0 / bilinear_depth(interp_uv, _this_.depth_tex_size, _this_.sample_index);
+        //let linear_depth = 1.0 / bilinear_depth(interp_uv, _this_.depth_tex_size, _this_.sample_index);
         
-        //let linear_depth = 1.0 / textureSampleLevel(prepass_downsample, prev_frame_sampler, interp_uv, 3.0).w;
+        let linear_depth = 1.0 / textureSampleLevel(prepass_downsample, prev_frame_sampler, interp_uv, f32(MIP)).w;
 
         max_depth = max(linear_depth, unfiltered_depth);
         min_depth = min(linear_depth, unfiltered_depth);
@@ -185,7 +187,7 @@ fn find_root(hrf: HybridRootFinder, drd: DepthRaymarchDistanceFn, start: vec3<f3
     if (hrf.linear_steps > 0u) {
         let candidate_t = min_t + step_size * hrf.jitter;
         let candidate = start + dir * candidate_t;
-        let candidate_d = distance_fn(drd, candidate);
+        let candidate_d = distance_fn(drd, candidate, candidate_t);
         intersected = candidate_d.root.distance < 0.0 && candidate_d.root.valid;
 
         if (intersected) {
@@ -204,7 +206,7 @@ fn find_root(hrf: HybridRootFinder, drd: DepthRaymarchDistanceFn, start: vec3<f3
                 //let candidate_t = min_t + step_size + step_size * interleaved_gradient_noise(cs_to_uv(candidate.xy * drd.depth_tex_size), step);
 
                 let candidate = start + dir * candidate_t;
-                let candidate_d = distance_fn(drd, candidate);
+                let candidate_d = distance_fn(drd, candidate, candidate_t);
                 intersected = candidate_d.root.distance < 0.0 && candidate_d.root.valid;
 
                 if (intersected) {
@@ -228,7 +230,7 @@ fn find_root(hrf: HybridRootFinder, drd: DepthRaymarchDistanceFn, start: vec3<f3
         for (var step = 0u; step < hrf.bisection_steps; step += 1u) {
             let mid_t = (min_t + max_t) * 0.5;
             let candidate = start + dir * mid_t;
-            let candidate_d = distance_fn(drd, candidate);
+            let candidate_d = distance_fn(drd, candidate, mid_t);
 
             if (candidate_d.root.distance < 0.0 && candidate_d.root.valid) {
                 // Intersection at the mid point. Refine the first half.
@@ -247,7 +249,7 @@ fn find_root(hrf: HybridRootFinder, drd: DepthRaymarchDistanceFn, start: vec3<f3
 
             let mid_t = mix(min_t, max_t, min_d.root.distance / total_d);
             let candidate = start + dir * mid_t;
-            let candidate_d = distance_fn(drd, candidate);
+            let candidate_d = distance_fn(drd, candidate, mid_t);
 
             // Only accept the result of the secant method if it improves upon the previous result.
             //
@@ -349,6 +351,9 @@ struct DepthRayMarch {
 
     /// Size of the depth buffer we're marching in, in pixels.
     depth_tex_size: vec2<f32>,
+
+    /// Min & Max mip level for depth used
+    mip_min_max: vec2<f32>, //TODO use something smaller
 } 
 
 fn DepthRayMarch_new_from_depth(depth_tex_size: vec2<f32>) -> DepthRayMarch {
@@ -359,6 +364,7 @@ fn DepthRayMarch_new_from_depth(depth_tex_size: vec2<f32>) -> DepthRayMarch {
     res.depth_thickness_linear_z = 1.0;
     res.march_behind_surfaces = false;
     res.use_bilinear = true;
+    res.mip_min_max = vec2(0.0);
     return res;
 }
 
@@ -445,6 +451,7 @@ fn march(_this_: DepthRayMarch, sample_index: u32) -> DepthRayMarchResult {
     distance_fn.march_behind_surfaces = _this_.march_behind_surfaces;
     distance_fn.depth_thickness = depth_thickness;
     distance_fn.use_bilinear = _this_.use_bilinear;
+    distance_fn.mip_min_max = _this_.mip_min_max;
 
 
     var hybrid_root_finder = new_with_linear_steps(step_count);

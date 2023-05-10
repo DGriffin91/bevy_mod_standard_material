@@ -263,20 +263,18 @@ impl FrameData for CopyFrameData {
         self.image.clone()
     }
 
-    fn set_image_h(&mut self, image_h: Handle<Image>) {
-        self.image = image_h;
+    fn size(&self, width: u32, height: u32) -> (u32, u32) {
+        (width, height)
     }
 
-    fn bytes(&self, width: u32, height: u32) -> Vec<u8> {
-        vec![0; get_image_bytes_count(width, height, MIP_LEVELS, 2, 4)]
-    }
-
-    fn size(&self, width: u32, height: u32) -> Extent3d {
-        Extent3d {
+    fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>) {
+        let image = images.get_mut(&self.image).unwrap();
+        image.texture_descriptor.size = Extent3d {
             width,
             height,
             depth_or_array_layers: 1,
-        }
+        };
+        image.data = vec![0; get_image_bytes_count(width, height, MIP_LEVELS, 2, 4)];
     }
 }
 
