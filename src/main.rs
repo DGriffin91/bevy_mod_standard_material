@@ -8,6 +8,7 @@ mod kitchen;
 mod load_sponza;
 mod path_trace;
 mod pbr_material;
+mod prepass_downsample;
 mod sphere;
 
 use bevy::{
@@ -26,6 +27,7 @@ use kitchen::KitchenPlugin;
 use load_sponza::SponzaPlugin;
 use path_trace::PathTracePlugin;
 use pbr_material::{load_blue_noise, swap_standard_material, CustomStandardMaterial};
+use prepass_downsample::PrepassDownsample;
 use sphere::SphereScenePlugin;
 
 fn main() {
@@ -53,6 +55,7 @@ fn main() {
                 }),
         )
         .add_plugin(CopyFramePlugin)
+        .add_plugin(PrepassDownsample)
         //.add_plugin(PathTracePlugin)
         .add_plugin(CoordinateTransformationsPlugin)
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())

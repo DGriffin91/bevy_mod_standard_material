@@ -92,12 +92,17 @@ fn distance_fn(_this_: DepthRaymarchDistanceFn, ray_point_cs: vec3<f32>) -> Dist
     
 
     let unfiltered_depth = 1.0 / prepass_depth(vec4<f32>(interp_uv * _this_.depth_tex_size, 0.0, 0.0), _this_.sample_index);
+    //let MIP = 1;
+    //let mip_scale = pow(2.0, f32(MIP));
+    //let unfiltered_depth = 1.0 / textureLoad(prepass_downsample, vec2<i32>(interp_uv * (_this_.depth_tex_size / mip_scale)), MIP).w;
 
     var max_depth = unfiltered_depth;
     var min_depth = unfiltered_depth;
 
     if _this_.use_bilinear {
         let linear_depth = 1.0 / bilinear_depth(interp_uv, _this_.depth_tex_size, _this_.sample_index);
+        
+        //let linear_depth = 1.0 / textureSampleLevel(prepass_downsample, prev_frame_sampler, interp_uv, 3.0).w;
 
         max_depth = max(linear_depth, unfiltered_depth);
         min_depth = min(linear_depth, unfiltered_depth);

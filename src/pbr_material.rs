@@ -15,7 +15,10 @@ use bevy::{
     },
 };
 
-use crate::copy_frame::CopyFrameData;
+use crate::{
+    copy_frame::CopyFrameData,
+    prepass_downsample::{self, PrepassDownsampleImage},
+};
 
 /// A material with "standard" properties used in PBR lighting
 /// Standard property values with pictures here
@@ -244,6 +247,9 @@ pub struct CustomStandardMaterial {
     #[texture(12)]
     #[sampler(13)]
     pub prev_image: Option<Handle<Image>>,
+    #[texture(14)]
+    #[sampler(15)]
+    pub prepass_downsample: Option<Handle<Image>>,
 }
 
 impl Default for CustomStandardMaterial {
@@ -275,6 +281,7 @@ impl Default for CustomStandardMaterial {
             depth_bias: 0.0,
             blue_noise: None,
             prev_image: None,
+            prepass_downsample: None,
         }
     }
 }
@@ -465,6 +472,7 @@ pub fn swap_standard_material(
     mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
     blue_noise: Res<BlueNoise>,
     copy_frame_data: Res<CopyFrameData>,
+    prepass_downsample: Res<PrepassDownsampleImage>,
 ) {
     for event in material_events.iter() {
         let handle = match event {
@@ -492,6 +500,7 @@ pub fn swap_standard_material(
                 depth_bias: material.depth_bias,
                 blue_noise: Some(blue_noise.0.clone()),
                 prev_image: Some(copy_frame_data.image.clone()),
+                prepass_downsample: Some(prepass_downsample.0.clone()),
             });
             for (entity, entity_mat_h) in entites.iter() {
                 if entity_mat_h == handle {

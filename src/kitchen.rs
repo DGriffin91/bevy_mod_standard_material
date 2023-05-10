@@ -124,10 +124,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },
             NormalPrepass,
-            DepthPrepass,
-            MotionVectorPrepass,
+            //DepthPrepass,
+            //MotionVectorPrepass,
             Fxaa::default(),
-            //TemporalAntiAliasBundle::default(),
+            TemporalAntiAliasBundle::default(),
             // {
             //    settings: TemporalAntiAliasSettings { reset: true },
             //    jitter: TemporalJitter { offset: Vec2::ZERO },

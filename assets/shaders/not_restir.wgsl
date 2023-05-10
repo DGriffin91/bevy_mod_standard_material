@@ -28,11 +28,15 @@ fn do_something(rr: NotAReservoir, samples: u32, ifrag_coord: vec2<i32>, surface
         let closest_motion_vector = prepass_motion_vector(vec4<f32>(prop_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
         let history_uv = prop_uv - closest_motion_vector;
 
-        let nor = normalize(prepass_normal(vec4<f32>(history_uv * view.viewport.zw, 0.0, 0.0), 0u));
+        //let nor = normalize(prepass_normal(vec4<f32>(history_uv * view.viewport.zw, 0.0, 0.0), 0u));
+        //let depth = prepass_depth(vec4(history_uv * view.viewport.zw, 0.0, 0.0), 0u);
+        let nor_depth = textureSampleLevel(prepass_downsample, prepass_downsample_samp, history_uv, 3.0);
+        let nor = nor_depth.xyz;
+        let depth = nor_depth.w;
         // TODO reproject last frame
-        let color = textureLoad(prev_frame_tex, vec2<i32>(history_uv * view.viewport.zw), 0).rgb;
+        //let color = textureLoad(prev_frame_tex, vec2<i32>(history_uv * (view.viewport.zw / 8.0)), 3).rgb;
+        let color = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 3.0).rgb;
 
-        let depth = prepass_depth(vec4(history_uv * view.viewport.zw, 0.0, 0.0), 0u);
 
         let prop_pos = position_ndc_to_world(vec3(uv_to_ndc(history_uv), depth));
         let distv = prop_pos - world_position;
@@ -45,7 +49,7 @@ fn do_something(rr: NotAReservoir, samples: u32, ifrag_coord: vec2<i32>, surface
 
         var weight = 1.0;
         let brdf = max(dot(surface_normal, dir), 0.0) * gr * (1.0 / (1.0 + dist * dist));
-        weight *= brdf * f32(backface > -0.01);
+        weight *= brdf * f32(backface > -0.1);
 
         var threshold = weight / (weight + rr.w_sum);
 
@@ -124,6 +128,7 @@ fn not_restir(frag_coord: vec4<f32>, surface_normal: vec3<f32>, world_position: 
     let raymarch_result = march(dmr, sample_index);
     var shadow = 0.0;
     if (!raymarch_result.hit) {
+        var gr = dot(rr.proposed_col, vec3<f32>(0.2126, 0.7152, 0.0722));
         let c = clamp((rr.proposed_col * rr.weight) / rr.w_sum, vec3(0.0), vec3(100.0));
         tot += c * max(dot(surface_normal, direction), 0.0) * (1.0 / (1.0 + dist * dist));
     }

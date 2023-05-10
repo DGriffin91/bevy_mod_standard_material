@@ -12,6 +12,11 @@ var prev_frame_tex: texture_2d<f32>;
 @group(1) @binding(13)
 var prev_frame_sampler: sampler;
 
+@group(1) @binding(14)
+var prepass_downsample: texture_2d<f32>;
+@group(1) @binding(15)
+var prepass_downsample_samp: sampler;
+
 #import bevy_pbr::utils
 #import bevy_pbr::clustered_forward
 #import bevy_pbr::lighting
@@ -166,9 +171,9 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     let closest_motion_vector = prepass_motion_vector(in.frag_coord, 0u).xy;
     let history_uv = (in.frag_coord.xy / view.viewport.zw) - closest_motion_vector;
 
-    let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
+    let last_image = vec3(textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 3.0).rgb);
     return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
-
+    
     
 
 //    let blue = blue_noise_for_pixel(vec2<u32>(in.frag_coord.xy), globals.frame_count % 2u);

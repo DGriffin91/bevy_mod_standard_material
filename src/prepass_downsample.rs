@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 
 use bevy::{
-    core_pipeline::{core_3d, fullscreen_vertex_shader::fullscreen_shader_vertex_state},
+    core_pipeline::{
+        core_3d, fullscreen_vertex_shader::fullscreen_shader_vertex_state,
+        prepass::ViewPrepassTextures,
+    },
     math::vec2,
     prelude::*,
     render::{
@@ -31,25 +34,28 @@ const MIP_LEVELS: u32 = 4;
 
 use crate::{path_trace::PathTraceNode, pbr_material::CustomStandardMaterial};
 
-pub struct CopyFramePlugin;
-impl Plugin for CopyFramePlugin {
+pub struct PrepassDownsample;
+impl Plugin for PrepassDownsample {
     fn build(&self, app: &mut App) {
         app.add_startup_system(setup_image)
             .add_system(resize_image)
-            .add_plugin(ExtractResourcePlugin::<CopyFrameData>::default());
+            .add_plugin(ExtractResourcePlugin::<PrepassDownsampleImage>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
                     return;
                 };
 
         render_app
-            .add_render_graph_node::<FrameCopyNode>(core_3d::graph::NAME, FrameCopyNode::NAME)
+            .add_render_graph_node::<PrepassDownsampleNode>(
+                core_3d::graph::NAME,
+                PrepassDownsampleNode::NAME,
+            )
             .add_render_graph_edges(
                 core_3d::graph::NAME,
                 &[
-                    core_3d::graph::node::END_MAIN_PASS,
-                    FrameCopyNode::NAME,
-                    core_3d::graph::node::BLOOM,
+                    core_3d::graph::node::PREPASS,
+                    PrepassDownsampleNode::NAME,
+                    core_3d::graph::node::MAIN_OPAQUE_PASS,
                 ],
             );
     }
@@ -59,15 +65,15 @@ impl Plugin for CopyFramePlugin {
             Ok(render_app) => render_app,
             Err(_) => return,
         };
-        render_app.init_resource::<CopyFramePipeline>();
+        render_app.init_resource::<PrepassDownsamplePipeline>();
     }
 }
 
-pub struct FrameCopyNode {
-    query: QueryState<&'static ViewTarget, With<ExtractedView>>,
+pub struct PrepassDownsampleNode {
+    query: QueryState<(&'static ViewTarget, &'static ViewPrepassTextures), With<ExtractedView>>,
 }
 
-impl FromWorld for FrameCopyNode {
+impl FromWorld for PrepassDownsampleNode {
     fn from_world(world: &mut World) -> Self {
         Self {
             query: QueryState::new(world),
@@ -75,11 +81,11 @@ impl FromWorld for FrameCopyNode {
     }
 }
 
-impl FrameCopyNode {
+impl PrepassDownsampleNode {
     pub const NAME: &str = "copy_frame";
 }
 
-impl Node for FrameCopyNode {
+impl Node for PrepassDownsampleNode {
     fn update(&mut self, world: &mut World) {
         self.query.update_archetypes(world);
     }
@@ -92,7 +98,7 @@ impl Node for FrameCopyNode {
     ) -> Result<(), NodeRunError> {
         let view_entity = graph_context.view_entity();
 
-        let Ok(view_target) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -101,14 +107,14 @@ impl Node for FrameCopyNode {
             return Ok(());
         }
 
-        let copy_frame_pipeline = world.resource::<CopyFramePipeline>();
+        let copy_frame_pipeline = world.resource::<PrepassDownsamplePipeline>();
         let images = world.resource::<RenderAssets<Image>>();
         let pipeline_cache = world.resource::<PipelineCache>();
-        let Some(copy_frame_data) = world.get_resource::<CopyFrameData>() else {
+        let Some(prepass_downsample) = world.get_resource::<PrepassDownsampleImage>() else {
             return Ok(());
         };
 
-        let Some(target_image) = images.get(&copy_frame_data.image) else {
+        let Some(target_image) = images.get(&prepass_downsample.0) else {
             return Ok(());
         };
 
@@ -116,14 +122,22 @@ impl Node for FrameCopyNode {
             return Ok(());
         };
 
+        let depth_binding = prepass_textures.depth.as_ref().unwrap();
+        let normal_binding = prepass_textures.normal.as_ref().unwrap();
+        let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
+
         let mut entries = vec![
             BindGroupEntry {
                 binding: 0,
-                resource: BindingResource::TextureView(view_target.main_texture()),
+                resource: BindingResource::TextureView(&depth_binding.default_view),
             },
             BindGroupEntry {
                 binding: 1,
-                resource: BindingResource::Sampler(&copy_frame_pipeline.sampler),
+                resource: BindingResource::TextureView(&normal_binding.default_view),
+            },
+            BindGroupEntry {
+                binding: 2,
+                resource: BindingResource::TextureView(&motion_vectors_binding.default_view),
             },
         ];
 
@@ -143,7 +157,7 @@ impl Node for FrameCopyNode {
         }
         for (i, view) in views.iter().enumerate() {
             entries.push(BindGroupEntry {
-                binding: 2 + i as u32,
+                binding: 3 + i as u32,
                 resource: BindingResource::TextureView(&view),
             })
         }
@@ -175,40 +189,28 @@ impl Node for FrameCopyNode {
 }
 
 #[derive(Resource)]
-struct CopyFramePipeline {
+struct PrepassDownsamplePipeline {
     layout: BindGroupLayout,
     sampler: Sampler,
     pipeline_id: CachedComputePipelineId,
 }
 
-impl FromWorld for CopyFramePipeline {
+impl FromWorld for PrepassDownsamplePipeline {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
-        let mut entries = vec![
-            BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::COMPUTE,
-                ty: BindingType::Texture {
-                    sample_type: TextureSampleType::Float { filterable: true },
-                    view_dimension: TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            },
-            BindGroupLayoutEntry {
-                binding: 1,
-                visibility: ShaderStages::COMPUTE,
-                ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                count: None,
-            },
-        ];
+
+        let mut entries = Vec::new();
+
+        // Prepass
+        entries.extend_from_slice(&get_bind_group_layout_entries([0, 1, 2], false));
+
         for i in 0..4 {
             entries.push(BindGroupLayoutEntry {
-                binding: 2 + i,
+                binding: 3 + i,
                 visibility: ShaderStages::COMPUTE,
                 ty: BindingType::StorageTexture {
                     access: StorageTextureAccess::ReadWrite,
-                    format: TextureFormat::Rgba16Float,
+                    format: TextureFormat::Rgba32Float,
                     view_dimension: TextureViewDimension::D2,
                 },
                 count: None,
@@ -227,7 +229,7 @@ impl FromWorld for CopyFramePipeline {
 
         let shader = world
             .resource::<AssetServer>()
-            .load("shaders/copy_frame_pass.wgsl");
+            .load("shaders/prepass_downsample.wgsl");
 
         let pipeline_cache = world.resource::<PipelineCache>();
 
@@ -249,9 +251,7 @@ impl FromWorld for CopyFramePipeline {
 }
 
 #[derive(Resource, Default, Clone, ExtractResource)]
-pub struct CopyFrameData {
-    pub image: Handle<Image>,
-}
+pub struct PrepassDownsampleImage(pub Handle<Image>);
 
 fn setup_image(
     mut commands: Commands,
@@ -270,9 +270,9 @@ fn setup_image(
         data: vec![0; get_image_bytes_count(size.width as u32, size.height as u32, MIP_LEVELS)],
         texture_descriptor: TextureDescriptor {
             dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
+            format: TextureFormat::Rgba32Float,
             usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
-            view_formats: &[TextureFormat::Rgba16Float],
+            view_formats: &[TextureFormat::Rgba32Float],
             label: None,
             size,
             mip_level_count: MIP_LEVELS,
@@ -293,13 +293,11 @@ fn setup_image(
         texture_view_descriptor: None,
     };
 
-    commands.insert_resource(CopyFrameData {
-        image: images.add(img),
-    });
+    commands.insert_resource(PrepassDownsampleImage(images.add(img)));
 }
 
 fn resize_image(
-    mut copy_frame_data: ResMut<CopyFrameData>,
+    mut prepass_downsample: ResMut<PrepassDownsampleImage>,
     mut images: ResMut<Assets<Image>>,
     windows: Query<&Window>,
     mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
@@ -307,7 +305,7 @@ fn resize_image(
     let Ok(window) = windows.get_single() else {
         return;
     };
-    let Some(image) = images.get(&copy_frame_data.image) else {
+    let Some(image) = images.get(&prepass_downsample.0) else {
         return;
     };
     let w = window.physical_width();
@@ -327,9 +325,9 @@ fn resize_image(
         };
         let image_h = images.add(image);
         for (_, mat) in custom_materials.iter_mut() {
-            mat.prev_image = Some(image_h.clone());
+            mat.prepass_downsample = Some(image_h.clone());
         }
-        copy_frame_data.image = image_h.clone();
+        prepass_downsample.0 = image_h.clone();
         // whyyyyyyyyyyyyyyyyyy
     }
 }
@@ -341,11 +339,52 @@ fn get_image_bytes_count(w: u32, h: u32, mip_levels: u32) -> usize {
     let mut data_size = 0;
 
     for _ in 0..mip_levels {
-        //2 bytes per component, 4 components per pixel
-        data_size += width * height * 2 * 4;
+        //4 bytes per component, 4 components per pixel
+        data_size += width * height * 4 * 4;
         width /= 2;
         height /= 2;
     }
 
     data_size as usize
+}
+
+pub fn get_bind_group_layout_entries(
+    bindings: [u32; 3],
+    multisampled: bool,
+) -> [BindGroupLayoutEntry; 3] {
+    [
+        // Depth texture
+        BindGroupLayoutEntry {
+            binding: bindings[0],
+            visibility: ShaderStages::COMPUTE,
+            ty: BindingType::Texture {
+                multisampled,
+                sample_type: TextureSampleType::Depth,
+                view_dimension: TextureViewDimension::D2,
+            },
+            count: None,
+        },
+        // Normal texture
+        BindGroupLayoutEntry {
+            binding: bindings[1],
+            visibility: ShaderStages::COMPUTE,
+            ty: BindingType::Texture {
+                multisampled,
+                sample_type: TextureSampleType::Float { filterable: false },
+                view_dimension: TextureViewDimension::D2,
+            },
+            count: None,
+        },
+        // Motion Vectors texture
+        BindGroupLayoutEntry {
+            binding: bindings[2],
+            visibility: ShaderStages::COMPUTE,
+            ty: BindingType::Texture {
+                multisampled,
+                sample_type: TextureSampleType::Float { filterable: false },
+                view_dimension: TextureViewDimension::D2,
+            },
+            count: None,
+        },
+    ]
 }
