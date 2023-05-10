@@ -197,14 +197,12 @@ struct PrepassDownsamplePipeline {
 
 impl FromWorld for PrepassDownsamplePipeline {
     fn from_world(world: &mut World) -> Self {
-        let render_device = world.resource::<RenderDevice>();
-
         let mut entries = Vec::new();
 
         // Prepass
-        entries.extend_from_slice(&get_bind_group_layout_entries([0, 1, 2], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([0, 1, 2], false));
 
-        for i in 0..4 {
+        for i in 0..MIP_LEVELS {
             entries.push(BindGroupLayoutEntry {
                 binding: 3 + i,
                 visibility: ShaderStages::COMPUTE,
@@ -319,7 +317,7 @@ impl FrameData for PrepassDownsampleImage {
     }
 }
 
-pub fn get_bind_group_layout_entries(
+pub fn prepass_get_bind_group_layout_entries(
     bindings: [u32; 3],
     multisampled: bool,
 ) -> [BindGroupLayoutEntry; 3] {

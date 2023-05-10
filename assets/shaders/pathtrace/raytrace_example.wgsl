@@ -10,9 +10,9 @@ const BLUE_NOISE_TEX_DIMS = vec3<u32>(64u, 64u, 64u);
 #import "shaders/pathtrace/trace_gpu_types.wgsl"
 
 #import bevy_pbr::mesh_types
-#import bevy_pbr::mesh_view_types
+#import bevy_render::view
+#import bevy_render::globals
 #import bevy_pbr::utils
-#import bevy_core_pipeline::fullscreen_vertex_shader
 
 @group(0) @binding(0)
 var<uniform> view: View;
@@ -53,6 +53,8 @@ var depth_prepass_texture: texture_depth_2d;
 var normal_prepass_texture: texture_2d<f32>;
 @group(0) @binding(17)
 var motion_vector_prepass_texture: texture_2d<f32>;
+@group(0) @binding(18)
+var target_tex: texture_storage_2d<rgba16float, write>;
 
 #import bevy_coordinate_systems::transformations
 #import bevy_pbr::prepass_utils
@@ -118,8 +120,13 @@ fn get_hit_material(query: SceneQuery) -> MaterialData {
 #define SPECULAR_SCREEN_SAMPLE
 #define DIFFUSE_SCREEN_SAMPLE
 
-@fragment
-fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+
+
+@compute @workgroup_size(8, 8, 1)
+fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
+    let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
+    let flocation = vec2<f32>(location);
+
     let samples = 1u;
     var sun_dir = vec3(-0.25, -0.24, 1.0);
     let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0;
@@ -130,8 +137,8 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let white_aa_noise = white_frame_noise(653u);
     let aa_jitter = (white_aa_noise.xy * 2.0 - 1.0) * frag_size * 0.125;
 
-    let depth = prepass_depth(vec4<f32>(in.position.xy, 0.0, 0.0), 0u);
-    let frag_coord = vec4(in.position.xy, depth, 0.0);
+    let depth = prepass_depth(vec4<f32>(flocation, 0.0, 0.0), 0u);
+    let frag_coord = vec4(flocation, depth, 0.0);
     let ifrag_coord = vec2<i32>(frag_coord.xy);
     let ufrag_coord = vec2<u32>(frag_coord.xy);
     let screen_uv = frag_coord_to_uv(frag_coord.xy);
@@ -150,7 +157,8 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         primary_roughness = perceptualRoughnessToRoughness(primary_mat.perceptual_roughness);
         surface_normal = get_surface_normal(query);
     } else {
-        return vec4(sky_color, 1.0);
+        textureStore(target_tex, location, vec4(sky_color, 1.0));
+        return;
     }
 
     
@@ -254,9 +262,9 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
 
 
     let closest_motion_vector = prepass_motion_vector(frag_coord, 0u).xy;
-    let history_uv = (frag_coord.xy / view.viewport.zw) - closest_motion_vector;
+    let history_uv = screen_uv - closest_motion_vector;
     let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
-    return vec4(mix(last_image, col, 1.0), 1.0);
+    textureStore(target_tex, vec2<i32>(screen_uv * view.viewport.zw), vec4(mix(last_image, col, 1.0), 1.0));
 }
 
 /*

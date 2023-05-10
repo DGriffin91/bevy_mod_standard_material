@@ -17,9 +17,8 @@ use bevy::{
 };
 
 use crate::{
-    copy_frame::CopyFrameData,
-    image_window_auto_size::ImageUpdate,
-    prepass_downsample::{self, PrepassDownsampleImage},
+    copy_frame::CopyFrameData, image_window_auto_size::ImageUpdate,
+    path_trace::PathTraceTargetImage, prepass_downsample::PrepassDownsampleImage,
 };
 
 /// A material with "standard" properties used in PBR lighting
@@ -252,6 +251,9 @@ pub struct CustomStandardMaterial {
     #[texture(14)]
     #[sampler(15)]
     pub prepass_downsample: Option<Handle<Image>>,
+    #[texture(16)]
+    #[sampler(17)]
+    pub pathtrace_output: Option<Handle<Image>>,
 }
 
 impl Default for CustomStandardMaterial {
@@ -284,6 +286,7 @@ impl Default for CustomStandardMaterial {
             blue_noise: None,
             prev_image: None,
             prepass_downsample: None,
+            pathtrace_output: None,
         }
     }
 }
@@ -475,6 +478,7 @@ pub fn swap_standard_material(
     blue_noise: Res<BlueNoise>,
     copy_frame_data: Res<CopyFrameData>,
     prepass_downsample: Res<PrepassDownsampleImage>,
+    pathtrace_target_img: Option<Res<PathTraceTargetImage>>,
 ) {
     for event in material_events.iter() {
         let handle = match event {
@@ -503,6 +507,11 @@ pub fn swap_standard_material(
                 blue_noise: Some(blue_noise.0.clone()),
                 prev_image: Some(copy_frame_data.image.clone()),
                 prepass_downsample: Some(prepass_downsample.0.clone()),
+                pathtrace_output: if let Some(ref res) = pathtrace_target_img {
+                    Some(res.0.clone())
+                } else {
+                    None
+                },
             });
             for (entity, entity_mat_h) in entites.iter() {
                 if entity_mat_h == handle {
@@ -529,6 +538,7 @@ impl ImageUpdate for CustomStandardMaterial {
         match *uuid {
             CopyFrameData::TYPE_UUID => self.prev_image = Some(image_h),
             PrepassDownsampleImage::TYPE_UUID => self.prepass_downsample = Some(image_h),
+            PathTraceTargetImage::TYPE_UUID => self.pathtrace_output = Some(image_h),
             _ => (),
         }
     }

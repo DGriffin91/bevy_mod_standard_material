@@ -250,8 +250,8 @@ fn pbr(
     //indirect_light += ssgi * diffuse_color;
 
     // NOT RESTIR
-    var not_restir = not_restir(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
-    indirect_light += not_restir * diffuse_color;
+//    var not_restir = not_restir(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
+//    indirect_light += not_restir * diffuse_color;
 
 
     

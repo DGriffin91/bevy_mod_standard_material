@@ -206,7 +206,7 @@ impl FromWorld for CopyFramePipeline {
                 count: None,
             },
         ];
-        for i in 0..4 {
+        for i in 0..MIP_LEVELS {
             entries.push(BindGroupLayoutEntry {
                 binding: 2 + i,
                 visibility: ShaderStages::COMPUTE,

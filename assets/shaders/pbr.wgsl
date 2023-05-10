@@ -17,6 +17,11 @@ var prepass_downsample: texture_2d<f32>;
 @group(1) @binding(15)
 var prepass_downsample_samp: sampler;
 
+@group(1) @binding(16)
+var pathtrace_tex: texture_2d<f32>;
+@group(1) @binding(17)
+var pathtrace_samp: sampler;
+
 #import bevy_pbr::utils
 #import bevy_pbr::clustered_forward
 #import bevy_pbr::lighting
@@ -167,12 +172,19 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     //return vec4(vec3(shad.x), 1.0);
     //return vec4(vec3(ssao), 1.0);
 
+    let screen_uv = in.frag_coord.xy / view.viewport.zw;
+
 
     let closest_motion_vector = prepass_motion_vector(in.frag_coord, 0u).xy;
-    let history_uv = (in.frag_coord.xy / view.viewport.zw) - closest_motion_vector;
+    let history_uv = screen_uv - closest_motion_vector;
 
-    let last_image = vec3(textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 3.0).rgb);
+    let last_image = vec3(textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb);
+    let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0.0).rgb);
+    //return vec4(mix(last_image, pt_image, 1.0), output_color.a);
     return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
+
+
+    
     
     
 
