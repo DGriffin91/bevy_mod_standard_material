@@ -13,10 +13,12 @@ use bevy::{
             ShaderType, SpecializedMeshPipelineError, TextureFormat,
         },
     },
+    utils::Uuid,
 };
 
 use crate::{
     copy_frame::CopyFrameData,
+    image_window_auto_size::ImageUpdate,
     prepass_downsample::{self, PrepassDownsampleImage},
 };
 
@@ -520,4 +522,14 @@ pub fn load_blue_noise(mut commands: Commands, ass: Res<AssetServer>) {
     //commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64_s16.png")));
     commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64.dds")));
     //commands.insert_resource(BlueNoise(ass.load("textures/stochastic_noise.ktx2")));
+}
+
+impl ImageUpdate for CustomStandardMaterial {
+    fn update(&mut self, uuid: &Uuid, image_h: Handle<Image>) {
+        match *uuid {
+            CopyFrameData::TYPE_UUID => self.prev_image = Some(image_h),
+            PrepassDownsampleImage::TYPE_UUID => self.prepass_downsample = Some(image_h),
+            _ => (),
+        }
+    }
 }

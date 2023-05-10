@@ -4,6 +4,7 @@ mod bistro;
 mod camera_controller;
 mod copy_frame;
 mod helmet;
+mod image_window_auto_size;
 mod kitchen;
 mod load_sponza;
 mod path_trace;

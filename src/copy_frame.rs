@@ -1,23 +1,20 @@
 use std::borrow::Cow;
 
 use bevy::{
-    core_pipeline::{core_3d, fullscreen_vertex_shader::fullscreen_shader_vertex_state},
-    math::vec2,
+    core_pipeline::core_3d,
     prelude::*,
+    reflect::TypeUuid,
     render::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
-            AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-            BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
-            CachedComputePipelineId, CachedRenderPipelineId, ColorTargetState, ColorWrites,
-            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, FilterMode, FragmentState,
-            MultisampleState, Operations, PipelineCache, PrimitiveState, RenderPassColorAttachment,
-            RenderPassDescriptor, RenderPipelineDescriptor, Sampler, SamplerBindingType,
-            SamplerDescriptor, ShaderStages, StorageTextureAccess, TextureAspect,
-            TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
-            TextureViewDescriptor, TextureViewDimension,
+            BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+            BindGroupLayoutEntry, BindingResource, BindingType, CachedComputePipelineId,
+            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache,
+            Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, StorageTextureAccess,
+            TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
+            TextureUsages, TextureViewDescriptor, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
         texture::ImageSampler,
@@ -29,13 +26,20 @@ use bevy::{
 const WORKGROUP_SIZE: u32 = 8;
 const MIP_LEVELS: u32 = 4;
 
-use crate::{path_trace::PathTraceNode, pbr_material::CustomStandardMaterial};
+use crate::{
+    image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
+    path_trace::PathTraceNode,
+    pbr_material::CustomStandardMaterial,
+};
 
 pub struct CopyFramePlugin;
 impl Plugin for CopyFramePlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(setup_image)
-            .add_system(resize_image)
+            .add_systems(
+                Update,
+                auto_resize_image::<CustomStandardMaterial, CopyFrameData>,
+            )
             .add_plugin(ExtractResourcePlugin::<CopyFrameData>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -248,9 +252,32 @@ impl FromWorld for CopyFramePipeline {
     }
 }
 
-#[derive(Resource, Default, Clone, ExtractResource)]
+#[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
+#[uuid = "e485c7f9-a2c5-4433-ac2b-6e65d1779086"]
 pub struct CopyFrameData {
     pub image: Handle<Image>,
+}
+
+impl FrameData for CopyFrameData {
+    fn image_h(&self) -> Handle<Image> {
+        self.image.clone()
+    }
+
+    fn set_image_h(&mut self, image_h: Handle<Image>) {
+        self.image = image_h;
+    }
+
+    fn bytes(&self, width: u32, height: u32) -> Vec<u8> {
+        vec![0; get_image_bytes_count(width, height, MIP_LEVELS, 2, 4)]
+    }
+
+    fn size(&self, width: u32, height: u32) -> Extent3d {
+        Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        }
+    }
 }
 
 fn setup_image(
@@ -267,7 +294,10 @@ fn setup_image(
     };
 
     let img = Image {
-        data: vec![0; get_image_bytes_count(size.width as u32, size.height as u32, MIP_LEVELS)],
+        data: vec![
+            0;
+            get_image_bytes_count(size.width as u32, size.height as u32, MIP_LEVELS, 2, 4)
+        ],
         texture_descriptor: TextureDescriptor {
             dimension: TextureDimension::D2,
             format: TextureFormat::Rgba16Float,
@@ -296,56 +326,4 @@ fn setup_image(
     commands.insert_resource(CopyFrameData {
         image: images.add(img),
     });
-}
-
-fn resize_image(
-    mut copy_frame_data: ResMut<CopyFrameData>,
-    mut images: ResMut<Assets<Image>>,
-    windows: Query<&Window>,
-    mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
-) {
-    let Ok(window) = windows.get_single() else {
-        return;
-    };
-    let Some(image) = images.get(&copy_frame_data.image) else {
-        return;
-    };
-    let w = window.physical_width();
-    let h = window.physical_height();
-
-    if w == 0 || h == 0 {
-        return;
-    }
-
-    if image.size() != vec2(w as f32, h as f32) {
-        let mut image = image.clone();
-        image.data = vec![0; get_image_bytes_count(w as u32, h as u32, MIP_LEVELS)];
-        image.texture_descriptor.size = Extent3d {
-            width: w,
-            height: h,
-            depth_or_array_layers: 1,
-        };
-        let image_h = images.add(image);
-        for (_, mat) in custom_materials.iter_mut() {
-            mat.prev_image = Some(image_h.clone());
-        }
-        copy_frame_data.image = image_h.clone();
-        // whyyyyyyyyyyyyyyyyyy
-    }
-}
-
-fn get_image_bytes_count(w: u32, h: u32, mip_levels: u32) -> usize {
-    let mut width = w;
-    let mut height = h;
-
-    let mut data_size = 0;
-
-    for _ in 0..mip_levels {
-        //2 bytes per component, 4 components per pixel
-        data_size += width * height * 2 * 4;
-        width /= 2;
-        height /= 2;
-    }
-
-    data_size as usize
 }
