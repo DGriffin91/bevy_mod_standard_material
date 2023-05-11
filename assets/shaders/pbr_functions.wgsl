@@ -265,16 +265,13 @@ fn pbr(
     
 
     // BAD SSR
-    var ssr = bad_ssr(screen_uv, vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, sample_index).rgb;
-    indirect_light += ssr;
+    //var ssr = bad_ssr(screen_uv, vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, sample_index).rgb;
+    //indirect_light += ssr;
 
-    //var screenspace_passes_image = vec3(textureSampleLevel(screenspace_passes, prev_frame_sampler, screen_uv, 0.0).rgb);
-    //indirect_light += max(screenspace_passes_image, vec3(0.0));
+    var screenspace_passes_image = vec3(textureSampleLevel(screenspace_passes, prev_frame_sampler, screen_uv, 0.0).rgb);
+    indirect_light += max(screenspace_passes_image, vec3(0.0));
 
-    //let rg = 0.1; //TODO this whole thing probably needs to work differently, return uvs to same or something, not color
-    //let F00 = get_f0(0.5, 0.0, vec3(0.0));
-    //let test = bad_ssr(screen_uv, vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, rg, F00, 0u).rgb;
-    //indirect_light += vec3(1.0 / in.frag_coord.xy, 0.0);//max(test, vec3(0.0));
+
 
 
     // pick closest depth

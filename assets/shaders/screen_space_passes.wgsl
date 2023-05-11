@@ -79,8 +79,13 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let roughness = 0.1; //TODO this whole thing probably needs to work differently, return uvs to same or something, not color
     let F0 = get_f0(0.5, 0.0, vec3(0.0));
     var col = bad_ssr(screen_uv, location, surface_normal, world_position, roughness, F0, 0u).rgb;
+
+
+    let closest_motion_vector = prepass_motion_vector(vec4<f32>(screen_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
+    let history_uv = screen_uv - closest_motion_vector;
+    let last_image = max(textureSampleLevel(prev_tex, linear_sampler, history_uv + frag_size * 0.5, 0.0).xyz, vec3(0.0));
     
-    textureStore(target_tex, location, vec4(col, depth));
+    textureStore(target_tex, location, vec4(mix(last_image, col, 0.1), depth));
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -90,7 +95,8 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let fprepass_size = vec2<f32>(textureDimensions(prepass_downsample).xy);
     let size = vec2<i32>(textureDimensions(target_tex).xy);
     let fsize = vec2<f32>(size);
-    let screen_uv = flocation / fsize;
+    let frag_size = 1.0 / fsize;
+    let screen_uv = flocation / fsize + frag_size * 0.5; // TODO verify
     let v = textureLoad(prev_tex, location, 0);
     let v2 = textureSampleLevel(prev_tex, linear_sampler, screen_uv, 0.0);
     let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 2.0);
@@ -99,11 +105,11 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     var tot = vec3(0.0);
     var tot_w = 0.0;
 
-    let dist_factor = 1.0;
+    let dist_factor = 20.0;
 
     let world_position = position_ndc_to_world(vec3(uv_to_ndc(screen_uv), v.w));
 
-    let n = 4;
+    let n = 6;
     for (var x = -n; x < n; x+=1) {
         for (var y = -n; y < n; y+=1) {
             let uv = vec2<f32>(location + vec2(x, y)) / fsize;
@@ -113,7 +119,7 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
             let col = textureLoad(prev_tex, location + vec2(x, y), 0);
 
             let d = max(dot(nor_depth.xyz, nd.xyz) + 0.001, 0.0);
-            w = w * d;
+            w = w * d * d * d * d * d; //lol
             let px_ws = position_ndc_to_world(vec3(uv_to_ndc(uv), col.w));
             let dist = distance(px_ws, world_position);
             w = w * (1.0 - clamp(dist * dist_factor, 0.0, 1.0));

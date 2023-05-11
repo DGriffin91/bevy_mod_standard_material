@@ -62,7 +62,7 @@ fn main() {
         .add_plugin(CopyFramePlugin)
         .add_plugin(PrepassDownsample)
         .add_plugin(PathTracePlugin)
-        //.add_plugin(ScreenSpacePassesPlugin)
+        .add_plugin(ScreenSpacePassesPlugin)
         .add_plugin(CoordinateTransformationsPlugin)
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
         .add_system(swap_standard_material)

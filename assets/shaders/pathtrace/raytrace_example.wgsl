@@ -135,6 +135,7 @@ fn get_hit_material(query: SceneQuery) -> MaterialData {
 #define DIFFUSE_INDIRECT
 //#define DIFFUSE_DIRECT
 #define DEPTH_MARCH
+#define APPLY_PRIMARY_COLOR
 
 
 
@@ -341,8 +342,11 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     }
 
     diffuse_indirect /= f32(samples);
+#ifdef APPLY_PRIMARY_COLOR
     var col = diffuse_indirect * primary_mat.color + diffuse_direct * primary_mat.color;
-    //var col = diffuse_indirect + diffuse_direct;
+#elseif
+    var col = diffuse_indirect + diffuse_direct;
+#endif
     
 #ifdef SPECULAR
     specular /= f32(samples);
@@ -351,13 +355,8 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
 
 
-    //let last_image = textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb;
-    var closest_motion_vector = vec2(0.0);
-    closest_motion_vector += prepass_motion_vector(vec4(frag_coord.xy * 4.0 + vec2(0.0, 0.0), 0.0, 0.0), 0u).xy;
-    closest_motion_vector += prepass_motion_vector(vec4(frag_coord.xy * 4.0 + vec2(0.0, 1.0), 0.0, 0.0), 0u).xy;
-    closest_motion_vector += prepass_motion_vector(vec4(frag_coord.xy * 4.0 + vec2(1.0, 0.0), 0.0, 0.0), 0u).xy;
-    closest_motion_vector += prepass_motion_vector(vec4(frag_coord.xy * 4.0 + vec2(1.0, 1.0), 0.0, 0.0), 0u).xy;
-    let history_uv = screen_uv - closest_motion_vector / 4.0;
+    let closest_motion_vector = prepass_motion_vector(vec4<f32>(screen_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
+    let history_uv = screen_uv - closest_motion_vector;
 
     let prev_target_frame = textureSampleLevel(prev_tex, linear_sampler, history_uv + frag_size * 0.5, 0.0).rgb;
     textureStore(target_tex, location, vec4(mix(prev_target_frame, col, 0.03), primary_ndc_depth));
@@ -379,7 +378,7 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     var tot = vec4(0.0);
     var tot_w = 0.0;
 
-    let dist_factor = 3.0;
+    let dist_factor = 6.0;
 
     let world_position = position_ndc_to_world(vec3(uv_to_ndc(screen_uv), v.w));
 
@@ -408,7 +407,7 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     }
     tot /= max(tot_w, 1.0);
     
-    //tot = textureLoad(prev_tex, location, 0).rgb;
+    //tot = textureLoad(prev_tex, location, 0);
     textureStore(target_tex, location, tot);
 }
 
