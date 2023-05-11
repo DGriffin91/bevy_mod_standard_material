@@ -15,12 +15,17 @@ var prev_frame_sampler: sampler;
 @group(1) @binding(14)
 var prepass_downsample: texture_2d<f32>;
 @group(1) @binding(15)
-var prepass_downsample_samp: sampler;
+var linear_sampler: sampler;
 
 @group(1) @binding(16)
 var pathtrace_tex: texture_2d<f32>;
 @group(1) @binding(17)
 var pathtrace_samp: sampler;
+
+@group(1) @binding(18)
+var screenspace_passes: texture_2d<f32>;
+@group(1) @binding(19)
+var screenspace_passes_samp: sampler;
 
 #import bevy_pbr::utils
 #import bevy_pbr::clustered_forward
@@ -42,6 +47,9 @@ var pathtrace_samp: sampler;
 #import bevy_pbr::fog
 //#import bevy_pbr::pbr_functions
 #import "shaders/pbr_functions.wgsl"
+#import "shaders/bicubic.wgsl"
+
+
 
 
 struct FragmentInput {
@@ -179,12 +187,16 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     let history_uv = screen_uv - closest_motion_vector;
 
     let last_image = vec3(textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb);
-    //let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0.0).rgb);
+    let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0.0).rgb);
+
+
     //return vec4(mix(last_image, pt_image, 1.0), output_color.a);
     return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
 
 
-    
+    //var screenspace_passes_image = vec3(textureSampleLevel(screenspace_passes, prev_frame_sampler, screen_uv, 0.0).rgb);
+    //return vec4(in.world_normal, output_color.a);
+    //return vec4(screenspace_passes_image, output_color.a);
     
     
 

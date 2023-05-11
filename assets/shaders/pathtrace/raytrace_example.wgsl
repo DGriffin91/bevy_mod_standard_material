@@ -57,11 +57,17 @@ var motion_vector_prepass_texture: texture_2d<f32>;
 var prev_tex: texture_2d<f32>;
 @group(0) @binding(19)
 var target_tex: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(20)
+var prepass_downsample: texture_2d<f32>;
+
 
 #import bevy_coordinate_systems::transformations
 #import bevy_pbr::prepass_utils
 #import "shaders/pathtrace/traverse_tlas.wgsl"
 #import "shaders/pathtrace/tracing.wgsl"
+
+#import "shaders/contact_shadows.wgsl"
+#import "shaders/depth_buffer_raymarching.wgsl"
 
 struct MaterialData {
     color: vec3<f32>,
@@ -103,7 +109,11 @@ fn get_screen_color_from_pos(hit_pos: vec3<f32>, ray_direction: vec3<f32>) -> ve
             let hit_n = normalize(prepass_normal(vec4<f32>(hit_uv * view.viewport.zw, 0.0, 0.0), 0u));
             let backface = dot(hit_n, ray_direction);
             if backface < 0.01 {
-                return textureSampleLevel(prev_frame_tex, linear_sampler, hit_uv, 0.0).rgb;
+                let closest_motion_vector = prepass_motion_vector(vec4<f32>(hit_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
+                let history_uv = hit_uv - closest_motion_vector;
+                if history_uv.x > 0.0 && history_uv.x < 1.0 && history_uv.y > 0.0 && history_uv.y < 1.0 {
+                    return textureSampleLevel(prev_frame_tex, linear_sampler, history_uv, 0.0).rgb;
+                }
             }
         }
     }
@@ -123,7 +133,8 @@ fn get_hit_material(query: SceneQuery) -> MaterialData {
 #define DIFFUSE_SCREEN_SAMPLE
 //#define SPECULAR
 #define DIFFUSE_INDIRECT
-#define DIFFUSE_DIRECT
+//#define DIFFUSE_DIRECT
+#define DEPTH_MARCH
 
 
 
@@ -136,13 +147,16 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     
 
     let target_dims = textureDimensions(target_tex).xy;
+    let depth_tex_dims = vec2<f32>(textureDimensions(prepass_downsample).xy);
+    
     let ftarget_dims = vec2<f32>(target_dims);
+    let screen_uv = flocation.xy / ftarget_dims;
 
-    let samples = 1u;
-    //var sun_dir = vec3(-0.25, -0.24, 1.0);
-    //let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0;
-    var sun_dir = vec3(0.22, -1.0, -0.2); //sponza
-    let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0; //sponza
+    let samples = 7u;
+    var sun_dir = vec3(-0.25, -0.24, 1.0);
+    let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0;
+    //var sun_dir = vec3(0.22, -1.0, -0.2); //sponza
+    //let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0; //sponza
     let sky_color = vec3(1.75, 1.9, 1.99) * 2.0;
 
     let frag_size = 1.0 / ftarget_dims;
@@ -150,11 +164,11 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let white_aa_noise = white_frame_noise(653u);
     let aa_jitter = (white_aa_noise.xy * 2.0 - 1.0) * frag_size * 0.125;
 
-    let depth = prepass_depth(vec4<f32>(flocation, 0.0, 0.0), 0u);
+    // TODO depth here won't quite be accurate
+    let depth = textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 1.0).w;
     let frag_coord = vec4(flocation, depth, 0.0);
     let ifrag_coord = vec2<i32>(frag_coord.xy);
     let ufrag_coord = vec2<u32>(frag_coord.xy);
-    let screen_uv = frag_coord.xy / ftarget_dims;
     
 
 
@@ -176,6 +190,8 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         textureStore(target_tex, location, vec4(sky_color, 1.0));
         return;
     }
+    let primary_depth = query.hit.distance;
+    let primary_ndc_depth = depth_linear_to_ndc(primary_depth);
 
     
     let world_position_ws = primary_ray.origin + primary_ray.direction * query.hit.distance * 0.99999 + surface_normal * 0.00001;
@@ -200,6 +216,25 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     }
 #endif
 
+#ifdef DEPTH_MARCH
+    let linear_steps = 24u;
+    let bisection_steps = 4u;
+    let depth_thickness = 1.5;
+    let drm_trace_dist = 20.0;
+
+    // TODO surface_normal * 0.01 is because of lines from using really low mip for depth
+    let ray_start_ndc = position_world_to_ndc(world_position_ws + surface_normal * 0.01);
+    var dmr = DepthRayMarch_new_from_depth(depth_tex_dims);
+    dmr.ray_start_cs = ray_start_ndc;
+    dmr.linear_steps = linear_steps;
+    dmr.depth_thickness_linear_z = depth_thickness;
+    dmr.march_behind_surfaces = false;
+    dmr.use_secant = true;
+    dmr.bisection_steps = bisection_steps;
+    dmr.use_bilinear = false;
+    dmr.mip_min_max = vec2(2.0, 3.0);
+#endif //DEPTH_MARCH
+
     for (var i = 0u; i < samples; i += 1u) {
         let seed = i * samples + globals.frame_count * samples;
         
@@ -212,33 +247,62 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
         // random direction trace
         var ray = new_ray(world_position_ws, direction);
-        var query = scene_query(ray);
 
-        var hit_pos = ray.origin + ray.direction * query.hit.distance;
-        var hit_color = get_hit_material(query).color;
+#ifdef DEPTH_MARCH
+        var depth_march_hit = false;
+        dmr = to_ws(dmr, world_position_ws + direction * drm_trace_dist);
+        dmr.jitter = fract(blue_noise_for_pixel(ufrag_coord, seed + 2u) + white_frame_noise.z);
+        
+        let raymarch_result = march(dmr, 0u);
+        if (raymarch_result.hit) {
+            let hit_n = normalize(prepass_normal(vec4<f32>(raymarch_result.hit_uv * depth_tex_dims, 0.0, 0.0), 0u));
+            let backface = dot(hit_n, direction);
+            if backface < 0.01 {
+                let closest_motion_vector = prepass_motion_vector(vec4<f32>(raymarch_result.hit_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
+                let history_uv = raymarch_result.hit_uv - closest_motion_vector;
+                if history_uv.x > 0.0 && history_uv.x < 1.0 && history_uv.y > 0.0 && history_uv.y < 1.0 {
+                    depth_march_hit = true;
+                    diffuse_indirect += textureSampleLevel(prev_frame_tex, linear_sampler, history_uv, 0.0).rgb;
+                }
+            }
+        }
+
+        // if we didn't hit the screen or hit the back side of something
+        // with the depth ray march we need to actually trace a ray
+        if !depth_march_hit {
+#endif //DEPTH_MARCH
+            var query = scene_query(ray);
+
+            var hit_dist = query.hit.distance;
+            var hit_pos = ray.origin + ray.direction * hit_dist;
+            var hit_color = get_hit_material(query).color;
+
 #ifdef DIFFUSE_INDIRECT
         // first see if we hit somewhere on the screen
 #ifdef DIFFUSE_SCREEN_SAMPLE
-        let ray_hit_pos = ray.origin + ray.direction * query.hit.distance;
-        let screen_color = get_screen_color_from_pos(ray_hit_pos, ray.direction);
-        if screen_color.x != -1.0 {
-            diffuse_indirect += screen_color;
-        } else {
-#endif
-            // Trace to sun
-            if query.hit.distance != F32_MAX {
-                var sray = new_ray(hit_pos, -sun_dir);
-                query = scene_query(sray);
-                if query.hit.distance == F32_MAX {
-                    diffuse_indirect += hit_color * sun_color;
-                }
+            let ray_hit_pos = ray.origin + ray.direction * hit_dist;
+            let screen_color = get_screen_color_from_pos(ray_hit_pos, ray.direction);
+            if screen_color.x != -1.0 {
+                diffuse_indirect += screen_color;
             } else {
-                diffuse_indirect += hit_color * sky_color;    
-            }
+#endif
+                // Trace to sun
+                if hit_dist != F32_MAX {
+                    var sray = new_ray(hit_pos, -sun_dir);
+                    query = scene_query(sray);
+                    if query.hit.distance == F32_MAX {
+                        diffuse_indirect += hit_color * sun_color;
+                    }
+                } else {
+                    diffuse_indirect += hit_color * sky_color;    
+                }
 #ifdef DIFFUSE_SCREEN_SAMPLE
-        }
+            }
 #endif
 #endif //DIFFUSE_INDIRECT
+#ifdef DEPTH_MARCH
+        }
+#endif //DEPTH_MARCH
 
 #ifdef SPECULAR
         // Specular
@@ -296,7 +360,56 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let history_uv = screen_uv - closest_motion_vector / 4.0;
 
     let prev_target_frame = textureSampleLevel(prev_tex, linear_sampler, history_uv + frag_size * 0.5, 0.0).rgb;
-    textureStore(target_tex, location, vec4(mix(prev_target_frame, col, 0.1), 1.0));
+    textureStore(target_tex, location, vec4(mix(prev_target_frame, col, 0.03), primary_ndc_depth));
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
+    let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
+    let flocation = vec2<f32>(location);
+    let fprepass_size = vec2<f32>(textureDimensions(prepass_downsample).xy);
+    let size = vec2<i32>(textureDimensions(target_tex).xy);
+    let fsize = vec2<f32>(size);
+    let screen_uv = flocation / fsize;
+    let v = textureLoad(prev_tex, location, 0);
+    //let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 1.0);
+    let nor_depth = textureLoad(prepass_downsample, vec2<i32>(screen_uv * fprepass_size) / 2, 1);
+    
+
+    var tot = vec4(0.0);
+    var tot_w = 0.0;
+
+    let dist_factor = 3.0;
+
+    let world_position = position_ndc_to_world(vec3(uv_to_ndc(screen_uv), v.w));
+
+    let n = 8;
+    for (var x = -n; x < n; x+=1) {
+        for (var y = -n; y < n; y+=1) {
+            let uv = vec2<f32>(location + vec2(x, y)) / fsize;
+            let px_dist = saturate(1.0 - distance(vec2(0.0, 0.0), vec2(f32(x), f32(y))) / f32(n + 1));
+            var w = px_dist;
+            let nd = textureLoad(prepass_downsample, vec2<i32>(uv * fprepass_size), 0);
+            let col = textureLoad(prev_tex, location + vec2(x, y), 0);
+
+            //let nd = textureSampleLevel(prepass_downsample, linear_sampler, uv, 1.0);
+            //let col = textureSampleLevel(prev_tex, linear_sampler, uv, 1.0);
+
+            let d = max(dot(nor_depth.xyz, nd.xyz) + 0.0, 0.0);
+            w = w * d;
+            let px_ws = position_ndc_to_world(vec3(uv_to_ndc(uv), col.w));
+            let dist = distance(px_ws, world_position);
+            w = w * (1.0 - clamp(dist * dist_factor, 0.0, 1.0));
+            //if distance(col.xyz, v.xyz) < 0.7 {
+                tot += vec4(col.rgb, nd.w) * w;
+                tot_w += w;
+            //}
+        }
+    }
+    tot /= max(tot_w, 1.0);
+    
+    //tot = textureLoad(prev_tex, location, 0).rgb;
+    textureStore(target_tex, location, tot);
 }
 
 /*

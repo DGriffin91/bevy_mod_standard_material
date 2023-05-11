@@ -7,78 +7,58 @@ use crate::{
     prepass_downsample::{
         prepass_get_bind_group_layout_entries, PrepassDownsampleImage, PrepassDownsampleNode,
     },
-    screen_space_passes::ScreenSpacePassesNode,
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
-    diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
-    math::vec3,
     prelude::*,
     reflect::TypeUuid,
     render::{
-        extract_component::{
-            ComponentUniforms, ExtractComponent, ExtractComponentPlugin, UniformComponentPlugin,
-        },
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         globals::GlobalsBuffer,
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-            BindingResource, CachedComputePipelineId, CommandEncoderDescriptor,
-            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache,
-            Sampler, SamplerDescriptor, ShaderType, StorageBuffer, TextureDescriptor,
-            TextureDimension, TextureFormat, TextureUsages, TextureViewDimension,
+            BindingResource, CachedComputePipelineId, ComputePassDescriptor,
+            ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache, Sampler,
+            SamplerDescriptor, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+            TextureViewDimension,
         },
-        renderer::{RenderContext, RenderDevice, RenderQueue},
+        renderer::{RenderContext, RenderDevice},
         texture::ImageSampler,
         view::{ExtractedView, ViewTarget, ViewUniformOffset, ViewUniforms},
-        Extract, RenderApp,
+        RenderApp,
     },
 };
-use bevy_mod_bvh::pipeline_utils::*;
-use bevy_mod_bvh::{
-    bind_group_layout_entry,
-    gpu_data::{
-        extract_gpu_data, new_storage_buffer, DynamicInstanceOrder, GPUBuffers, GPUDataPlugin,
-        StaticInstanceOrder,
-    },
-    BVHPlugin, BVHSet, DynamicTLAS, StaticTLAS,
+use bevy_mod_bvh::pipeline_utils::{
+    globals_entry, image_entry, sampler_entry, storage_tex_write, view_entry,
 };
 
 const WORKGROUP_SIZE: u32 = 8;
-pub struct PathTracePlugin;
-impl Plugin for PathTracePlugin {
+pub struct ScreenSpacePassesPlugin;
+impl Plugin for ScreenSpacePassesPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_image)
             .add_systems(
                 Update,
-                (set_meshes_tlas, update_settings).before(BVHSet::BlasTlas),
+                auto_resize_image::<CustomStandardMaterial, ScreenSpacePassesTargetImage>,
             )
-            .add_systems(
-                Update,
-                auto_resize_image::<CustomStandardMaterial, PathTraceTargetImage>,
-            )
-            .add_plugin(BVHPlugin)
-            .add_plugin(GPUDataPlugin)
-            .add_plugin(ExtractComponentPlugin::<TraceSettings>::default())
-            .add_plugin(UniformComponentPlugin::<TraceSettings>::default())
-            .add_plugin(ExtractResourcePlugin::<BlueNoise>::default())
-            .add_plugin(ExtractResourcePlugin::<PathTraceTargetImage>::default());
+            .add_plugin(ExtractResourcePlugin::<ScreenSpacePassesTargetImage>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
         render_app
-            .add_systems(ExtractSchedule, extract_materials.after(extract_gpu_data))
-            .init_resource::<GpuMatBuffers>()
-            .add_render_graph_node::<PathTraceNode>(core_3d::graph::NAME, PathTraceNode::NAME)
+            .add_render_graph_node::<ScreenSpacePassesNode>(
+                core_3d::graph::NAME,
+                ScreenSpacePassesNode::NAME,
+            )
             .add_render_graph_edges(
                 core_3d::graph::NAME,
                 &[
                     PrepassDownsampleNode::NAME,
-                    PathTraceNode::NAME,
+                    ScreenSpacePassesNode::NAME,
                     core_3d::graph::node::MAIN_OPAQUE_PASS,
                 ],
             );
@@ -93,7 +73,7 @@ impl Plugin for PathTracePlugin {
     }
 }
 
-pub struct PathTraceNode {
+pub struct ScreenSpacePassesNode {
     query: QueryState<
         (
             &'static ViewUniformOffset,
@@ -104,11 +84,11 @@ pub struct PathTraceNode {
     >,
 }
 
-impl PathTraceNode {
-    pub const NAME: &str = "path_trace";
+impl ScreenSpacePassesNode {
+    pub const NAME: &str = "ScreenSpacePassesNode";
 }
 
-impl FromWorld for PathTraceNode {
+impl FromWorld for ScreenSpacePassesNode {
     fn from_world(world: &mut World) -> Self {
         Self {
             query: QueryState::new(world),
@@ -116,7 +96,7 @@ impl FromWorld for PathTraceNode {
     }
 }
 
-impl Node for PathTraceNode {
+impl Node for ScreenSpacePassesNode {
     fn update(&mut self, world: &mut World) {
         self.query.update_archetypes(world);
     }
@@ -132,8 +112,6 @@ impl Node for PathTraceNode {
         let view_uniforms = view_uniforms.uniforms.binding().unwrap();
         let globals_buffer = world.resource::<GlobalsBuffer>();
         let globals_binding = globals_buffer.buffer.binding().unwrap();
-        let gpu_buffers = world.resource::<GPUBuffers>();
-        let gpu_mat_buffers = world.resource::<GpuMatBuffers>();
         let images = world.resource::<RenderAssets<Image>>();
 
         let Some(prepass_downsample) = world.get_resource::<PrepassDownsampleImage>() else {
@@ -143,13 +121,13 @@ impl Node for PathTraceNode {
             return Ok(());
         };
 
-        let Some(pathtrace_target) = world.get_resource::<PathTraceTargetImage>() else {
+        let Some(screenspace_target) = world.get_resource::<ScreenSpacePassesTargetImage>() else {
             return Ok(());
         };
-        let Some(target_image) = images.get(&pathtrace_target.current_img) else {
+        let Some(target_image) = images.get(&screenspace_target.current_img) else {
             return Ok(());
         };
-        let Some(processed_image) = images.get(&pathtrace_target.processed_img) else {
+        let Some(processed_image) = images.get(&screenspace_target.processed_img) else {
             return Ok(());
         };
 
@@ -174,36 +152,14 @@ impl Node for PathTraceNode {
             return Ok(());
         }
 
-        let path_trace_pipeline = world.resource::<TracePipeline>();
+        let pipeline = world.resource::<TracePipeline>();
 
         let pipeline_cache = world.resource::<PipelineCache>();
 
-        let Some(pipeline) = pipeline_cache.get_compute_pipeline(path_trace_pipeline.pipeline_id) else {
+        let Some(update_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.pipeline_id) else {
             return Ok(());
         };
-        let Some(blur_pipeline) = pipeline_cache.get_compute_pipeline(path_trace_pipeline.blur_pipeline_id) else {
-            return Ok(());
-        };
-
-        let settings_uniforms = world.resource::<ComponentUniforms<TraceSettings>>();
-        let Some(settings_binding) = settings_uniforms.uniforms().binding() else {
-            return Ok(());
-        };
-
-        let Some(gpu_buffer_bind_group_entries) = gpu_buffers
-                .bind_group_entries([5, 6, 7, 8, 9, 10, 11]) else {
-            return Ok(());
-        };
-
-        let Some(static_material_instance_binding) =
-            gpu_mat_buffers.static_material_instance_buffer.binding() else
-        {
-            return Ok(());
-        };
-
-        let Some(dynamic_material_instance_binding) =
-            gpu_mat_buffers.dynamic_material_instance_buffer.binding() else
-        {
+        let Some(blur_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.blur_pipeline_id) else {
             return Ok(());
         };
 
@@ -214,11 +170,11 @@ impl Node for PathTraceNode {
         let mut entries = vec![
             // at the start so they are easy to swap for the blur
             BindGroupEntry {
-                binding: 18,
+                binding: 9,
                 resource: BindingResource::TextureView(&processed_image.texture_view),
             },
             BindGroupEntry {
-                binding: 19,
+                binding: 10,
                 resource: BindingResource::TextureView(&target_image.texture_view),
             },
             BindGroupEntry {
@@ -235,51 +191,37 @@ impl Node for PathTraceNode {
             },
             BindGroupEntry {
                 binding: 3,
-                resource: BindingResource::Sampler(&path_trace_pipeline.sampler),
+                resource: BindingResource::Sampler(&pipeline.sampler),
             },
             BindGroupEntry {
                 binding: 4,
-                resource: settings_binding.clone(),
-            },
-            BindGroupEntry {
-                binding: 12,
                 resource: BindingResource::TextureView(&blue_noise.texture_view),
             },
             BindGroupEntry {
-                binding: 13,
-                resource: static_material_instance_binding,
-            },
-            BindGroupEntry {
-                binding: 14,
-                resource: dynamic_material_instance_binding,
-            },
-            BindGroupEntry {
-                binding: 15,
+                binding: 5,
                 resource: BindingResource::TextureView(&depth_binding.default_view),
             },
             BindGroupEntry {
-                binding: 16,
+                binding: 6,
                 resource: BindingResource::TextureView(&normal_binding.default_view),
             },
             BindGroupEntry {
-                binding: 17,
+                binding: 7,
                 resource: BindingResource::TextureView(&motion_vectors_binding.default_view),
             },
             BindGroupEntry {
-                binding: 20,
+                binding: 8,
                 resource: BindingResource::TextureView(&prepass_downsample_tex.texture_view),
             },
         ];
-
-        entries.extend(gpu_buffer_bind_group_entries);
 
         {
             let bind_group =
                 render_context
                     .render_device()
                     .create_bind_group(&BindGroupDescriptor {
-                        label: Some("path_trace_bind_group"),
-                        layout: &path_trace_pipeline.layout,
+                        label: Some("ScreenSpacePassesNode_bind_group"),
+                        layout: &pipeline.layout,
                         entries: &entries,
                     });
 
@@ -287,7 +229,7 @@ impl Node for PathTraceNode {
                 .command_encoder()
                 .begin_compute_pass(&ComputePassDescriptor::default());
 
-            pass.set_pipeline(pipeline);
+            pass.set_pipeline(update_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
             pass.dispatch_workgroups(
                 target_image.size.x as u32 / WORKGROUP_SIZE,
@@ -307,8 +249,8 @@ impl Node for PathTraceNode {
                 render_context
                     .render_device()
                     .create_bind_group(&BindGroupDescriptor {
-                        label: Some("path_trace_bind_group"),
-                        layout: &path_trace_pipeline.layout,
+                        label: Some("ScreenSpacePassesNode_bind_group"),
+                        layout: &pipeline.layout,
                         entries: &entries,
                     });
 
@@ -341,7 +283,7 @@ impl FromWorld for TracePipeline {
     fn from_world(world: &mut World) -> Self {
         let shader = world
             .resource::<AssetServer>()
-            .load("shaders/pathtrace/raytrace_example.wgsl");
+            .load("shaders/screen_space_passes.wgsl");
 
         let render_device = world.resource::<RenderDevice>();
 
@@ -350,26 +292,27 @@ impl FromWorld for TracePipeline {
             globals_entry(1),
             image_entry(2, TextureViewDimension::D2),
             sampler_entry(3),
-            uniform_entry(4, Some(TraceSettings::min_size())),
-            image_entry(12, TextureViewDimension::D2Array),
-            MaterialData::bind_group_layout_entry(13),
-            MaterialData::bind_group_layout_entry(14),
-            image_entry(18, TextureViewDimension::D2),
-            storage_tex_write(19, TextureFormat::Rgba16Float, TextureViewDimension::D2),
-            image_entry(20, TextureViewDimension::D2),
+            image_entry(4, TextureViewDimension::D2Array),
+            image_entry(8, TextureViewDimension::D2),
+            image_entry(9, TextureViewDimension::D2),
+            storage_tex_write(10, TextureFormat::Rgba16Float, TextureViewDimension::D2),
         ];
 
-        entries.append(&mut GPUBuffers::bind_group_layout_entry([5, 6, 7, 8, 9, 10, 11]).to_vec());
-
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([15, 16, 17], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([5, 6, 7], false));
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("path_trace_bind_group_layout"),
+            label: Some("ScreenSpacePassesNode_bind_group_layout"),
             entries: &entries,
         });
 
-        let sampler = render_device.create_sampler(&SamplerDescriptor::default());
+        let sampler = render_device.create_sampler(&SamplerDescriptor {
+            label: Some("ScreenSpacePassesNode_sampler_descriptor"),
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
+            mipmap_filter: FilterMode::Linear,
+            ..default()
+        });
 
         let pipeline_cache = world.resource_mut::<PipelineCache>();
 
@@ -400,114 +343,9 @@ impl FromWorld for TracePipeline {
     }
 }
 
-#[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
-pub struct TraceSettings {
-    pub frame: u32,
-    pub fps: f32,
-}
-
-fn set_meshes_tlas(
-    mut commands: Commands,
-    query: Query<
-        Entity,
-        (
-            With<Handle<Mesh>>,
-            Without<StaticTLAS>,
-            Without<DynamicTLAS>,
-        ),
-    >,
-) {
-    for entity in &query {
-        commands.entity(entity).insert(StaticTLAS);
-    }
-}
-
-fn update_settings(mut settings: Query<&mut TraceSettings>, diagnostics: Res<Diagnostics>) {
-    for mut setting in &mut settings {
-        setting.frame = setting.frame.wrapping_add(1);
-        if let Some(diag) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
-            let hysteresis = 0.9;
-            let fps = hysteresis + diag.value().unwrap_or(0.0) as f32;
-            setting.fps = setting.fps * hysteresis + fps * (1.0 - hysteresis);
-        }
-    }
-}
-
-#[derive(ShaderType, Default)]
-pub struct MaterialData {
-    pub color: Vec3,
-    pub perceptual_roughness: f32,
-    pub metallic: f32,
-    pub reflectance: f32,
-}
-
-impl MaterialData {
-    bind_group_layout_entry!();
-}
-
-#[derive(Resource, Default)]
-pub struct GpuMatBuffers {
-    pub static_material_instance_buffer: StorageBuffer<Vec<MaterialData>>,
-    pub dynamic_material_instance_buffer: StorageBuffer<Vec<MaterialData>>,
-}
-
-pub fn extract_materials(
-    static_instance_order: Res<StaticInstanceOrder>,
-    dynamic_instance_order: Res<DynamicInstanceOrder>,
-    custom_materials: Extract<Res<Assets<CustomStandardMaterial>>>,
-    entites: Extract<Query<&Handle<CustomStandardMaterial>>>,
-    mut gpu_mat_data: ResMut<GpuMatBuffers>,
-    render_device: Res<RenderDevice>,
-    render_queue: Res<RenderQueue>,
-) {
-    // TODO figure out better way to detect material changes, just specific to dyn or static
-    if static_instance_order.is_changed() || custom_materials.is_changed() {
-        gpu_mat_data.static_material_instance_buffer = new_storage_buffer(
-            collect_mats(&static_instance_order.0, &entites, &custom_materials),
-            "static_material_instance_buffer",
-            &render_device,
-            &render_queue,
-        );
-    }
-    if dynamic_instance_order.is_changed() || custom_materials.is_changed() {
-        gpu_mat_data.dynamic_material_instance_buffer = new_storage_buffer(
-            collect_mats(&dynamic_instance_order.0, &entites, &custom_materials),
-            "dynamic_material_instance_buffer",
-            &render_device,
-            &render_queue,
-        );
-    }
-}
-
-fn collect_mats(
-    instance_order: &Vec<Entity>,
-    entites: &Query<&Handle<CustomStandardMaterial>>,
-    custom_materials: &Assets<CustomStandardMaterial>,
-) -> Vec<MaterialData> {
-    let mut material_data = Vec::new();
-    for e in instance_order.iter() {
-        if let Ok(mat_h) = entites.get(*e) {
-            if let Some(mat) = custom_materials.get(mat_h) {
-                let c = mat.base_color.as_linear_rgba_f32();
-                material_data.push(MaterialData {
-                    color: vec3(c[0], c[1], c[2]),
-                    perceptual_roughness: mat.perceptual_roughness,
-                    metallic: mat.metallic,
-                    reflectance: mat.reflectance,
-                })
-            } else {
-                material_data.push(MaterialData::default())
-            }
-        } else {
-            material_data.push(MaterialData::default())
-        }
-    }
-    material_data
-}
-
 #[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
-#[uuid = "c235dff3-905c-4e88-9e0e-fb1c76de1322"]
-pub struct PathTraceTargetImage {
+#[uuid = "c4fe681e-4dd8-47e5-8039-e9678ad4d717"]
+pub struct ScreenSpacePassesTargetImage {
     pub current_img: Handle<Image>,
     pub processed_img: Handle<Image>,
 }
@@ -515,8 +353,8 @@ pub struct PathTraceTargetImage {
 fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResMut<Assets<Image>>) {
     let window = windows.single();
     let size = Extent3d {
-        width: window.physical_width() / 4,
-        height: window.physical_height() / 4,
+        width: window.physical_width() / 2,
+        height: window.physical_height() / 2,
         depth_or_array_layers: 1,
     };
     let img = Image {
@@ -534,7 +372,7 @@ fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResM
             sample_count: 1,
         },
         sampler_descriptor: ImageSampler::Descriptor(SamplerDescriptor {
-            label: Some("path_trace_sampler_descriptor"),
+            label: Some("ScreenSpacePassesNode_sampler_descriptor"),
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Linear,
             mipmap_filter: FilterMode::Linear,
@@ -544,13 +382,13 @@ fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResM
     };
     let img2 = img.clone();
 
-    commands.insert_resource(PathTraceTargetImage {
+    commands.insert_resource(ScreenSpacePassesTargetImage {
         current_img: images.add(img),
         processed_img: images.add(img2),
     });
 }
 
-impl FrameData for PathTraceTargetImage {
+impl FrameData for ScreenSpacePassesTargetImage {
     fn image_h(&self) -> Handle<Image> {
         self.processed_img.clone()
     }
@@ -558,8 +396,8 @@ impl FrameData for PathTraceTargetImage {
     fn size(&self, width: u32, height: u32) -> (u32, u32) {
         // make sure the size is divisible by work group
         (
-            ((width / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
-            ((height / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
+            ((width / 2) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
+            ((height / 2) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
         )
     }
 

@@ -19,6 +19,7 @@ use bevy::{
 use crate::{
     copy_frame::CopyFrameData, image_window_auto_size::ImageUpdate,
     path_trace::PathTraceTargetImage, prepass_downsample::PrepassDownsampleImage,
+    screen_space_passes::ScreenSpacePassesTargetImage,
 };
 
 /// A material with "standard" properties used in PBR lighting
@@ -254,6 +255,9 @@ pub struct CustomStandardMaterial {
     #[texture(16)]
     #[sampler(17)]
     pub pathtrace_output: Option<Handle<Image>>,
+    #[texture(18)]
+    #[sampler(19)]
+    pub screenspace_passes: Option<Handle<Image>>,
 }
 
 impl Default for CustomStandardMaterial {
@@ -287,6 +291,7 @@ impl Default for CustomStandardMaterial {
             prev_image: None,
             prepass_downsample: None,
             pathtrace_output: None,
+            screenspace_passes: None,
         }
     }
 }
@@ -479,6 +484,7 @@ pub fn swap_standard_material(
     copy_frame_data: Res<CopyFrameData>,
     prepass_downsample: Res<PrepassDownsampleImage>,
     pathtrace_target_img: Option<Res<PathTraceTargetImage>>,
+    screenspace_passes_target_image: Option<Res<ScreenSpacePassesTargetImage>>,
 ) {
     for event in material_events.iter() {
         let handle = match event {
@@ -508,7 +514,12 @@ pub fn swap_standard_material(
                 prev_image: Some(copy_frame_data.image.clone()),
                 prepass_downsample: Some(prepass_downsample.0.clone()),
                 pathtrace_output: if let Some(ref res) = pathtrace_target_img {
-                    Some(res.current_img.clone())
+                    Some(res.processed_img.clone())
+                } else {
+                    None
+                },
+                screenspace_passes: if let Some(ref res) = screenspace_passes_target_image {
+                    Some(res.processed_img.clone())
                 } else {
                     None
                 },
@@ -539,6 +550,7 @@ impl ImageUpdate for CustomStandardMaterial {
             CopyFrameData::TYPE_UUID => self.prev_image = Some(image_h),
             PrepassDownsampleImage::TYPE_UUID => self.prepass_downsample = Some(image_h),
             PathTraceTargetImage::TYPE_UUID => self.pathtrace_output = Some(image_h),
+            ScreenSpacePassesTargetImage::TYPE_UUID => self.screenspace_passes = Some(image_h),
             _ => (),
         }
     }

@@ -30,7 +30,7 @@ fn do_something(rr: NotAReservoir, samples: u32, ifrag_coord: vec2<i32>, surface
 
         //let nor = normalize(prepass_normal(vec4<f32>(history_uv * view.viewport.zw, 0.0, 0.0), 0u));
         //let depth = prepass_depth(vec4(history_uv * view.viewport.zw, 0.0, 0.0), 0u);
-        let nor_depth = textureSampleLevel(prepass_downsample, prepass_downsample_samp, history_uv, 3.0);
+        let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, history_uv, 3.0);
         let nor = nor_depth.xyz;
         let depth = nor_depth.w;
         // TODO reproject last frame

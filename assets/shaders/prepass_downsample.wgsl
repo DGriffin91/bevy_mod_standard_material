@@ -21,7 +21,7 @@ fn resample_nor(location: vec2<i32>, size: vec2<i32>, n: i32) -> vec3<f32> {
     var v = vec3(0.0);
     for (var x = 0; x < n; x+=1) {
         for (var y = 0; y < n; y+=1) {
-            v += textureLoad(normal_prepass_texture, location * n + vec2(x, y), 0).xyz;
+            v += textureLoad(normal_prepass_texture, location * n + vec2(x, y), 0).xyz * 2.0 - 1.0;
         }
     }
     v /= f32(n * n);
@@ -45,7 +45,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
     let flocation = vec2<f32>(location);
     let size = vec2<i32>(textureDimensions(normal_prepass_texture).xy);
-    let N = textureLoad(normal_prepass_texture, location, 0).xyz;
+    let N = textureLoad(normal_prepass_texture, location, 0).xyz * 2.0 - 1.0;
     let D = textureLoad(depth_prepass_texture, location, 0);
     textureStore(target_0, location, vec4(N, D));
 

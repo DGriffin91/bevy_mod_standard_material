@@ -158,11 +158,19 @@ fn pbr_input_new() -> PbrInput {
     return pbr_input;
 }
 
+fn get_f0(reflectance: f32, metallic: f32, metal_color: vec3<f32>) -> vec3<f32> {
+    let F0 = 0.16 * reflectance * reflectance * (1.0 - metallic) + metal_color * metallic;
+    return F0;
+}
+
 #ifndef NORMAL_PREPASS
 fn pbr(
     in: PbrInput,
     sample_index: u32,
 ) -> vec4<f32> {
+    
+    let screen_uv = in.frag_coord.xy / view.viewport.zw;
+
     var output_color: vec4<f32> = in.material.base_color;
 
     // TODO use .a for exposure compensation in HDR
@@ -246,8 +254,8 @@ fn pbr(
     var indirect_light = ambient_light(in.world_position, in.N, in.V, NdotV, diffuse_color, F0, perceptual_roughness, occlusion);
 
     // BAD SSGI
-    var ssgi = bad_ssgi(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
-    indirect_light += ssgi * diffuse_color;
+//    var ssgi = bad_ssgi(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
+//    indirect_light += ssgi * diffuse_color;
 
     // NOT RESTIR
 //    var not_restir = not_restir(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
@@ -255,12 +263,36 @@ fn pbr(
 
 
     
-//    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal);
-//    indirect_light = ssao * diffuse_color;
 
     // BAD SSR
-    var ssr = bad_ssr(in.frag_coord, normalize(in.N), in.world_position.xyz, roughness, F0, sample_index).rgb;
+    var ssr = bad_ssr(screen_uv, vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, sample_index).rgb;
     indirect_light += ssr;
+
+    //var screenspace_passes_image = vec3(textureSampleLevel(screenspace_passes, prev_frame_sampler, screen_uv, 0.0).rgb);
+    //indirect_light += max(screenspace_passes_image, vec3(0.0));
+
+    //let rg = 0.1; //TODO this whole thing probably needs to work differently, return uvs to same or something, not color
+    //let F00 = get_f0(0.5, 0.0, vec3(0.0));
+    //let test = bad_ssr(screen_uv, vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, rg, F00, 0u).rgb;
+    //indirect_light += vec3(1.0 / in.frag_coord.xy, 0.0);//max(test, vec3(0.0));
+
+
+    // pick closest depth
+    let depth = depth_linear_to_ndc(distance(view.world_position.xyz, in.world_position.xyz));
+    let pt_px = 1.0 / vec2<f32>(textureDimensions(pathtrace_tex).xy);
+    var pt_image =  textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + vec2(0.0, 0.0) * pt_px, 0.0);
+    //let pt_image2 = textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + vec2(0.0, 0.5) * pt_px, 0.0);
+    //let pt_image3 = textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + vec2(0.5, 0.0) * pt_px, 0.0);
+    //let pt_image4 = textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + vec2(0.5, 1.5) * pt_px, 0.0);
+    //pt_image = select(pt_image2, pt_image, distance(pt_image.w, depth) < distance(pt_image2.w, depth));
+    //pt_image = select(pt_image3, pt_image, distance(pt_image.w, depth) < distance(pt_image3.w, depth));
+    //pt_image = select(pt_image4, pt_image, distance(pt_image.w, depth) < distance(pt_image4.w, depth));
+
+
+    indirect_light += pt_image.rgb * diffuse_color;
+//    
+//    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
+//    indirect_light *= ssao;
 
 
     // Environment map light (indirect)

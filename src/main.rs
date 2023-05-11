@@ -10,13 +10,15 @@ mod load_sponza;
 mod path_trace;
 mod pbr_material;
 mod prepass_downsample;
+mod screen_space_passes;
 mod sphere;
 
 use bevy::{
-    core_pipeline::experimental::taa::TemporalAntiAliasPlugin,
+    core_pipeline::{core_3d, experimental::taa::TemporalAntiAliasPlugin},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     pbr::DirectionalLightShadowMap,
     prelude::*,
+    render::{render_graph::RenderGraphApp, RenderApp},
     window::PresentMode,
 };
 use bevy_coordinate_systems::CoordinateTransformationsPlugin;
@@ -29,13 +31,15 @@ use load_sponza::SponzaPlugin;
 use path_trace::PathTracePlugin;
 use pbr_material::{load_blue_noise, swap_standard_material, CustomStandardMaterial};
 use prepass_downsample::PrepassDownsample;
+use screen_space_passes::ScreenSpacePassesPlugin;
 use sphere::SphereScenePlugin;
 
 fn main() {
-    App::new()
+    let mut app = App::new();
+    app
         //.add_plugin(BistroPlugin)
-        //.add_plugin(KitchenPlugin)
-        .add_plugin(SponzaPlugin)
+        .add_plugin(KitchenPlugin)
+        //.add_plugin(SponzaPlugin)
         //.add_plugin(HelmetScenePlugin)
         //.add_plugin(SphereScenePlugin)
         .insert_resource(Msaa::Off)
@@ -58,6 +62,7 @@ fn main() {
         .add_plugin(CopyFramePlugin)
         .add_plugin(PrepassDownsample)
         .add_plugin(PathTracePlugin)
+        //.add_plugin(ScreenSpacePassesPlugin)
         .add_plugin(CoordinateTransformationsPlugin)
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
         .add_system(swap_standard_material)
@@ -65,8 +70,9 @@ fn main() {
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(TemporalAntiAliasPlugin)
         .add_startup_system(load_blue_noise)
-        .add_startup_system(no_empty_tlas)
-        .run();
+        .add_startup_system(no_empty_tlas);
+
+    app.run();
 }
 
 //TODO don't require this

@@ -28,7 +28,6 @@ const MIP_LEVELS: u32 = 4;
 
 use crate::{
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
-    path_trace::PathTraceNode,
     pbr_material::CustomStandardMaterial,
 };
 
