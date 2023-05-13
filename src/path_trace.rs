@@ -63,7 +63,6 @@ impl Plugin for PathTracePlugin {
             .add_plugin(GPUDataPlugin)
             .add_plugin(ExtractComponentPlugin::<TraceSettings>::default())
             .add_plugin(UniformComponentPlugin::<TraceSettings>::default())
-            .add_plugin(ExtractResourcePlugin::<BlueNoise>::default())
             .add_plugin(ExtractResourcePlugin::<PathTraceTargetImage>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {

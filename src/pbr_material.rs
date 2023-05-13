@@ -27,11 +27,10 @@ use crate::{
 /// <https://google.github.io/filament/Material%20Properties.pdf>.
 ///
 /// May be created directly from a [`Color`] or an [`Image`].
-#[derive(AsBindGroup, Reflect, FromReflect, Debug, Clone, TypeUuid)]
+#[derive(AsBindGroup, Debug, Clone, TypeUuid)]
 #[uuid = "e65799f2-923e-4548-8879-be574f9db988"]
 #[bind_group_data(CustomStandardMaterialKey)]
 #[uniform(0, CustomStandardMaterialUniform)]
-#[reflect(Default, Debug)]
 pub struct CustomStandardMaterial {
     /// The color of the surface of the material before lighting.
     ///
@@ -215,7 +214,6 @@ pub struct CustomStandardMaterial {
     ///
     /// [`Mesh`]: bevy_render::mesh::Mesh
     // TODO: include this in reflection somehow (maybe via remote types like serde https://serde.rs/remote-derive.html)
-    #[reflect(ignore)]
     pub cull_mode: Option<Face>,
 
     /// Whether to apply only the base color to this material.
@@ -255,68 +253,9 @@ pub struct CustomStandardMaterial {
     #[texture(16)]
     #[sampler(17)]
     pub pathtrace_output: Option<Handle<Image>>,
-    #[texture(18)]
+    #[texture(18, dimension = "2d_array")]
     #[sampler(19)]
-    pub screenspace_passes: Option<Handle<Image>>,
-}
-
-impl Default for CustomStandardMaterial {
-    fn default() -> Self {
-        CustomStandardMaterial {
-            // White because it gets multiplied with texture values if someone uses
-            // a texture.
-            base_color: Color::rgb(1.0, 1.0, 1.0),
-            base_color_texture: None,
-            emissive: Color::BLACK,
-            emissive_texture: None,
-            // Matches Blender's default roughness.
-            perceptual_roughness: 0.5,
-            // Metallic should generally be set to 0.0 or 1.0.
-            metallic: 0.0,
-            metallic_roughness_texture: None,
-            // Minimum real-world reflectance is 2%, most materials between 2-5%
-            // Expressed in a linear scale and equivalent to 4% reflectance see
-            // <https://google.github.io/filament/Material%20Properties.pdf>
-            reflectance: 0.5,
-            occlusion_texture: None,
-            normal_map_texture: None,
-            flip_normal_map_y: false,
-            double_sided: false,
-            cull_mode: Some(Face::Back),
-            unlit: false,
-            fog_enabled: true,
-            alpha_mode: AlphaMode::Opaque,
-            depth_bias: 0.0,
-            blue_noise: None,
-            prev_image: None,
-            prepass_downsample: None,
-            pathtrace_output: None,
-            screenspace_passes: None,
-        }
-    }
-}
-
-impl From<Color> for CustomStandardMaterial {
-    fn from(color: Color) -> Self {
-        CustomStandardMaterial {
-            base_color: color,
-            alpha_mode: if color.a() < 1.0 {
-                AlphaMode::Blend
-            } else {
-                AlphaMode::Opaque
-            },
-            ..Default::default()
-        }
-    }
-}
-
-impl From<Handle<Image>> for CustomStandardMaterial {
-    fn from(texture: Handle<Image>) -> Self {
-        CustomStandardMaterial {
-            base_color_texture: Some(texture),
-            ..Default::default()
-        }
-    }
+    pub screenspace_passes: Handle<Image>,
 }
 
 /// The GPU representation of the uniform data of a [`StandardMaterial`].
@@ -484,7 +423,7 @@ pub fn swap_standard_material(
     copy_frame_data: Res<CopyFrameData>,
     prepass_downsample: Res<PrepassDownsampleImage>,
     pathtrace_target_img: Option<Res<PathTraceTargetImage>>,
-    screenspace_passes_target_image: Option<Res<ScreenSpacePassesTargetImage>>,
+    screenspace_passes_target_image: Res<ScreenSpacePassesTargetImage>,
 ) {
     for event in material_events.iter() {
         let handle = match event {
@@ -518,11 +457,7 @@ pub fn swap_standard_material(
                 } else {
                     None
                 },
-                screenspace_passes: if let Some(ref res) = screenspace_passes_target_image {
-                    Some(res.processed_img.clone())
-                } else {
-                    None
-                },
+                screenspace_passes: screenspace_passes_target_image.processed_img.clone(),
             });
             for (entity, entity_mat_h) in entites.iter() {
                 if entity_mat_h == handle {
@@ -550,7 +485,7 @@ impl ImageUpdate for CustomStandardMaterial {
             CopyFrameData::TYPE_UUID => self.prev_image = Some(image_h),
             PrepassDownsampleImage::TYPE_UUID => self.prepass_downsample = Some(image_h),
             PathTraceTargetImage::TYPE_UUID => self.pathtrace_output = Some(image_h),
-            ScreenSpacePassesTargetImage::TYPE_UUID => self.screenspace_passes = Some(image_h),
+            ScreenSpacePassesTargetImage::TYPE_UUID => self.screenspace_passes = image_h,
             _ => (),
         }
     }

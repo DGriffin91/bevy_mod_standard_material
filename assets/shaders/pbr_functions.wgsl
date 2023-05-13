@@ -170,6 +170,7 @@ fn pbr(
 ) -> vec4<f32> {
     
     let screen_uv = in.frag_coord.xy / view.viewport.zw;
+    let best_lod_offset = select_lod_offset(2.0, 4.0, screen_uv);
 
     var output_color: vec4<f32> = in.material.base_color;
 
@@ -179,7 +180,7 @@ fn pbr(
     // calculate non-linear roughness from linear perceptualRoughness
     let metallic = in.material.metallic;
     let perceptual_roughness = in.material.perceptual_roughness;
-    let roughness = perceptualRoughnessToRoughness(perceptual_roughness);
+    var roughness = perceptualRoughnessToRoughness(perceptual_roughness);
 
     let occlusion = in.occlusion;
 
@@ -256,6 +257,8 @@ fn pbr(
     // BAD SSGI
 //    var ssgi = bad_ssgi(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
 //    indirect_light += ssgi * diffuse_color;
+    let ssgi = textureSampleLevel(screenspace_passes, linear_sampler, screen_uv + best_lod_offset, 3u, 0.0).rgb;
+    indirect_light += ssgi * diffuse_color;
 
     // NOT RESTIR
 //    var not_restir = not_restir(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
@@ -265,19 +268,30 @@ fn pbr(
     
 
     // BAD SSR
-    //var ssr = bad_ssr(screen_uv, vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, sample_index).rgb;
-    //indirect_light += ssr;
+//    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0).rgb;
+//    indirect_light += ssr;
+    //roughness = 0.01;
+    
+    if roughness >= 0.08 {
+        let ssr_sharp = textureSampleLevel(screenspace_passes, linear_sampler, screen_uv + best_lod_offset, 0u, 0.0).rgb;
+        let ssr_mid = textureSampleLevel(screenspace_passes, linear_sampler, screen_uv + best_lod_offset, 1u, 0.0).rgb;
+        let ssr_rough = textureSampleLevel(screenspace_passes, linear_sampler, screen_uv + best_lod_offset, 2u, 0.0).rgb;
+        let ssr = interpolate_colors(roughness, 0.01, ssr_sharp, 0.05, ssr_mid, 0.2, ssr_rough);
+        indirect_light += max(ssr.rgb, vec3(0.0)); //TODO handle metal correctly
+    } else {
+        var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), in.N, in.world_position.xyz, 0.0, F0, 1u, vec2(0.0, 1.0)).rgb;
+        indirect_light += max(ssr.rgb, vec3(0.0)); //TODO handle metal correctly
 
-    var screenspace_passes_image = vec3(textureSampleLevel(screenspace_passes, prev_frame_sampler, screen_uv, 0.0).rgb);
-    indirect_light += max(screenspace_passes_image, vec3(0.0));
+    }
 
+//    indirect_light += ssr_uv(screen_uv, normalize(in.N), in.world_position.xyz, roughness).xyz;
 
 
 
     // pick closest depth
-    let depth = depth_linear_to_ndc(distance(view.world_position.xyz, in.world_position.xyz));
-    let pt_px = 1.0 / vec2<f32>(textureDimensions(pathtrace_tex).xy);
-    var pt_image =  textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + vec2(0.0, 0.0) * pt_px, 0.0);
+    //let depth = depth_linear_to_ndc(distance(view.world_position.xyz, in.world_position.xyz));
+    //let pt_px = 1.0 / vec2<f32>(textureDimensions(pathtrace_tex).xy);
+    //var pt_image =  textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + vec2(0.0, 0.0) * pt_px, 0.0);
     //let pt_image2 = textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + vec2(0.0, 0.5) * pt_px, 0.0);
     //let pt_image3 = textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + vec2(0.5, 0.0) * pt_px, 0.0);
     //let pt_image4 = textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + vec2(0.5, 1.5) * pt_px, 0.0);
@@ -286,10 +300,10 @@ fn pbr(
     //pt_image = select(pt_image4, pt_image, distance(pt_image.w, depth) < distance(pt_image4.w, depth));
 
 
-    indirect_light += pt_image.rgb * diffuse_color;
+    //indirect_light += pt_image.rgb * diffuse_color;
 //    
-//    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
-//    indirect_light *= ssao;
+    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
+    indirect_light *= ssao;
 
 
     // Environment map light (indirect)

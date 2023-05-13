@@ -21,8 +21,8 @@ use bevy::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
             BindingResource, CachedComputePipelineId, ComputePassDescriptor,
             ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache, Sampler,
-            SamplerDescriptor, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
-            TextureViewDimension,
+            SamplerDescriptor, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat,
+            TextureUsages, TextureViewDescriptor, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
         texture::ImageSampler,
@@ -35,6 +35,7 @@ use bevy_mod_bvh::pipeline_utils::{
 };
 
 const WORKGROUP_SIZE: u32 = 8;
+const LAYERS: u32 = 4;
 pub struct ScreenSpacePassesPlugin;
 impl Plugin for ScreenSpacePassesPlugin {
     fn build(&self, app: &mut App) {
@@ -294,8 +295,12 @@ impl FromWorld for TracePipeline {
             sampler_entry(3),
             image_entry(4, TextureViewDimension::D2Array),
             image_entry(8, TextureViewDimension::D2),
-            image_entry(9, TextureViewDimension::D2),
-            storage_tex_write(10, TextureFormat::Rgba16Float, TextureViewDimension::D2),
+            image_entry(9, TextureViewDimension::D2Array),
+            storage_tex_write(
+                10,
+                TextureFormat::Rgba16Float,
+                TextureViewDimension::D2Array,
+            ),
         ];
 
         // Prepass
@@ -353,12 +358,12 @@ pub struct ScreenSpacePassesTargetImage {
 fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResMut<Assets<Image>>) {
     let window = windows.single();
     let size = Extent3d {
-        width: window.physical_width() / 2,
-        height: window.physical_height() / 2,
-        depth_or_array_layers: 1,
+        width: window.physical_width() / 4,
+        height: window.physical_height() / 4,
+        depth_or_array_layers: 4,
     };
     let img = Image {
-        data: vec![0; get_image_bytes_count(size.width, size.height, 1, 2, 4)],
+        data: vec![0; get_image_bytes_count(size.width, size.height, 1, 2, 4) * LAYERS as usize],
         texture_descriptor: TextureDescriptor {
             dimension: TextureDimension::D2,
             format: TextureFormat::Rgba16Float,
@@ -378,7 +383,16 @@ fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResM
             mipmap_filter: FilterMode::Linear,
             ..default()
         }),
-        texture_view_descriptor: None,
+        texture_view_descriptor: Some(TextureViewDescriptor {
+            label: None,
+            format: Some(TextureFormat::Rgba16Float),
+            dimension: Some(TextureViewDimension::D2Array),
+            base_mip_level: 0,
+            mip_level_count: None,
+            base_array_layer: 0,
+            array_layer_count: Some(LAYERS),
+            aspect: TextureAspect::All,
+        }),
     };
     let img2 = img.clone();
 
@@ -396,8 +410,8 @@ impl FrameData for ScreenSpacePassesTargetImage {
     fn size(&self, width: u32, height: u32) -> (u32, u32) {
         // make sure the size is divisible by work group
         (
-            ((width / 2) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
-            ((height / 2) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
+            ((width / 3) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
+            ((height / 3) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
         )
     }
 
@@ -407,9 +421,9 @@ impl FrameData for ScreenSpacePassesTargetImage {
         image.texture_descriptor.size = Extent3d {
             width: size.0,
             height: size.1,
-            depth_or_array_layers: 1,
+            depth_or_array_layers: LAYERS,
         };
-        image.data = vec![0; get_image_bytes_count(size.0, size.1, 1, 2, 4)];
+        image.data = vec![0; get_image_bytes_count(size.0, size.1, 1, 2, 4) * LAYERS as usize];
         let img2 = image.clone();
         let image2 = images.get_mut(&self.processed_img).unwrap();
         *image2 = img2;

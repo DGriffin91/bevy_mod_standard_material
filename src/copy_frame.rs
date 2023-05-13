@@ -24,7 +24,7 @@ use bevy::{
 };
 
 const WORKGROUP_SIZE: u32 = 8;
-const MIP_LEVELS: u32 = 4;
+const MIP_LEVELS: u32 = 6;
 
 use crate::{
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
@@ -120,16 +120,9 @@ impl Node for FrameCopyNode {
             return Ok(());
         };
 
-        let mut entries = vec![
-            BindGroupEntry {
-                binding: 0,
-                resource: BindingResource::TextureView(view_target.main_texture()),
-            },
-            BindGroupEntry {
-                binding: 1,
-                resource: BindingResource::Sampler(&copy_frame_pipeline.sampler),
-            },
-        ];
+        let Some(pipeline2) = pipeline_cache.get_compute_pipeline(copy_frame_pipeline.pipeline_id2) else {
+            return Ok(());
+        };
 
         let mut views = Vec::new();
         for i in 0..MIP_LEVELS {
@@ -145,34 +138,59 @@ impl Node for FrameCopyNode {
             });
             views.push(view);
         }
-        for (i, view) in views.iter().enumerate() {
-            entries.push(BindGroupEntry {
-                binding: 2 + i as u32,
-                resource: BindingResource::TextureView(&view),
-            })
+
+        for (pass_n, pipeline) in [pipeline, pipeline2].iter().enumerate() {
+            let mut entries = vec![
+                if pass_n == 0 {
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: BindingResource::TextureView(view_target.main_texture()),
+                    }
+                } else {
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: BindingResource::TextureView(&views[2]),
+                    }
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::Sampler(&copy_frame_pipeline.sampler),
+                },
+            ];
+
+            for i in 0..3 {
+                entries.push(BindGroupEntry {
+                    binding: 2 + i as u32,
+                    resource: BindingResource::TextureView(
+                        &views[if pass_n == 0 { i } else { i + 3 }],
+                    ),
+                });
+            }
+
+            let bind_group =
+                render_context
+                    .render_device()
+                    .create_bind_group(&BindGroupDescriptor {
+                        label: Some("copy_frame_bind_group"),
+                        layout: &copy_frame_pipeline.layout,
+
+                        entries: &entries,
+                    });
+
+            let mut pass = render_context
+                .command_encoder()
+                .begin_compute_pass(&ComputePassDescriptor::default());
+
+            pass.set_bind_group(0, &bind_group, &[]);
+
+            pass.set_pipeline(pipeline);
+            pass.dispatch_workgroups(
+                // make sure we are >= target_image.size
+                (target_image.size.x as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+                (target_image.size.y as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+                1,
+            );
         }
-
-        let bind_group = render_context
-            .render_device()
-            .create_bind_group(&BindGroupDescriptor {
-                label: Some("copy_frame_bind_group"),
-                layout: &copy_frame_pipeline.layout,
-
-                entries: &entries,
-            });
-
-        let mut pass = render_context
-            .command_encoder()
-            .begin_compute_pass(&ComputePassDescriptor::default());
-
-        pass.set_bind_group(0, &bind_group, &[]);
-
-        pass.set_pipeline(pipeline);
-        pass.dispatch_workgroups(
-            target_image.size.x as u32 / WORKGROUP_SIZE,
-            target_image.size.y as u32 / WORKGROUP_SIZE,
-            1,
-        );
 
         Ok(())
     }
@@ -183,6 +201,7 @@ struct CopyFramePipeline {
     layout: BindGroupLayout,
     sampler: Sampler,
     pipeline_id: CachedComputePipelineId,
+    pipeline_id2: CachedComputePipelineId,
 }
 
 impl FromWorld for CopyFramePipeline {
@@ -206,7 +225,7 @@ impl FromWorld for CopyFramePipeline {
                 count: None,
             },
         ];
-        for i in 0..MIP_LEVELS {
+        for i in 0..3 {
             entries.push(BindGroupLayoutEntry {
                 binding: 2 + i,
                 visibility: ShaderStages::COMPUTE,
@@ -239,15 +258,25 @@ impl FromWorld for CopyFramePipeline {
             label: None,
             layout: vec![layout.clone()],
             push_constant_ranges: Vec::new(),
-            shader,
+            shader: shader.clone(),
             shader_defs: vec![],
             entry_point: Cow::from("update"),
+        });
+
+        let pipeline_id2 = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+            label: None,
+            layout: vec![layout.clone()],
+            push_constant_ranges: Vec::new(),
+            shader,
+            shader_defs: vec![],
+            entry_point: Cow::from("update2"),
         });
 
         Self {
             layout,
             sampler,
             pipeline_id,
+            pipeline_id2,
         }
     }
 }

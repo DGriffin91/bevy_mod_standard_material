@@ -23,7 +23,7 @@ var pathtrace_tex: texture_2d<f32>;
 var pathtrace_samp: sampler;
 
 @group(1) @binding(18)
-var screenspace_passes: texture_2d<f32>;
+var screenspace_passes: texture_2d_array<f32>;
 @group(1) @binding(19)
 var screenspace_passes_samp: sampler;
 
@@ -33,6 +33,7 @@ var screenspace_passes_samp: sampler;
 #import bevy_pbr::pbr_ambient
 #import bevy_pbr::prepass_utils
 //#import bevy_pbr::shadows
+#import "shaders/select_lod_offset.wgsl"
 #import "shaders/sampling.wgsl"
 #import "shaders/contact_shadows.wgsl"
 #import "shaders/depth_buffer_raymarching.wgsl"
@@ -44,6 +45,7 @@ var screenspace_passes_samp: sampler;
 #import "shaders/bad_gtao.wgsl"
 #import "shaders/not_restir.wgsl"
 #import "shaders/shadows.wgsl"
+#import "shaders/ssr_uv.wgsl"
 #import bevy_pbr::fog
 //#import bevy_pbr::pbr_functions
 #import "shaders/pbr_functions.wgsl"
@@ -190,13 +192,13 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 
     //let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0.0).rgb);
     //return vec4(mix(last_image, pt_image, 1.0), output_color.a);
-    
+
     return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
 
 
     //var screenspace_passes_image = vec3(textureSampleLevel(screenspace_passes, prev_frame_sampler, screen_uv, 0.0).rgb);
     //return vec4(in.world_normal, output_color.a);
-    //return vec4(screenspace_passes_image, output_color.a);
+    //return vec4(screenspace_passes_image + output_color.rgb, output_color.a);
     
     
 

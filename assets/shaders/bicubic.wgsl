@@ -39,8 +39,9 @@ fn textureSampleBicubic(tex: texture_2d<f32>, tex_sampler: sampler, texCoords: v
     return mix(mix(sample3, sample2, vec4(sx)), mix(sample1, sample0, vec4(sx)), vec4(sy));
 }
 
+// TODO seems to only work up to level 4
 fn textureSampleLevelBicubic(tex: texture_2d<f32>, tex_sampler: sampler, texCoords: vec2<f32>, level: f32) -> vec4<f32> {
-    let texture_size = vec2<f32>(textureDimensions(tex).xy);
+    let texture_size = vec2<f32>(textureDimensions(tex).xy) / pow(2.0, level);
 
     let invTexSize = 1.0 / texture_size;
    

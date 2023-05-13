@@ -18,7 +18,7 @@ use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     pbr::DirectionalLightShadowMap,
     prelude::*,
-    render::{render_graph::RenderGraphApp, RenderApp},
+    render::{extract_resource::ExtractResourcePlugin, render_graph::RenderGraphApp, RenderApp},
     window::PresentMode,
 };
 use bevy_coordinate_systems::CoordinateTransformationsPlugin;
@@ -29,7 +29,7 @@ use helmet::HelmetScenePlugin;
 use kitchen::KitchenPlugin;
 use load_sponza::SponzaPlugin;
 use path_trace::PathTracePlugin;
-use pbr_material::{load_blue_noise, swap_standard_material, CustomStandardMaterial};
+use pbr_material::{load_blue_noise, swap_standard_material, BlueNoise, CustomStandardMaterial};
 use prepass_downsample::PrepassDownsample;
 use screen_space_passes::ScreenSpacePassesPlugin;
 use sphere::SphereScenePlugin;
@@ -61,9 +61,10 @@ fn main() {
         )
         .add_plugin(CopyFramePlugin)
         .add_plugin(PrepassDownsample)
-        .add_plugin(PathTracePlugin)
+        //.add_plugin(PathTracePlugin)
         .add_plugin(ScreenSpacePassesPlugin)
         .add_plugin(CoordinateTransformationsPlugin)
+        .add_plugin(ExtractResourcePlugin::<BlueNoise>::default())
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
         .add_system(swap_standard_material)
         .add_plugin(LogDiagnosticsPlugin::default())
