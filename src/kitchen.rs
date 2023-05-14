@@ -61,15 +61,15 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         ..default()
     });
 
-    commands.spawn(SceneBundle {
-        scene: asset_server.load("large_models/wet_ground.gltf#Scene0"),
-        ..default()
-    });
-
-    commands.spawn(SceneBundle {
-        scene: asset_server.load("large_models/spheres.gltf#Scene0"),
-        ..default()
-    });
+    //    commands.spawn(SceneBundle {
+    //        scene: asset_server.load("large_models/wet_ground.gltf#Scene0"),
+    //        ..default()
+    //    });
+    //
+    //    commands.spawn(SceneBundle {
+    //        scene: asset_server.load("large_models/spheres.gltf#Scene0"),
+    //        ..default()
+    //    });
 
     // Sun
     commands.spawn(DirectionalLightBundle {

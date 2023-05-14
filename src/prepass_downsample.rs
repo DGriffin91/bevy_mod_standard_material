@@ -179,8 +179,9 @@ impl Node for PrepassDownsampleNode {
 
         pass.set_pipeline(pipeline);
         pass.dispatch_workgroups(
-            target_image.size.x as u32 / WORKGROUP_SIZE,
-            target_image.size.y as u32 / WORKGROUP_SIZE,
+            // make sure we are >= target_image.size
+            (target_image.size.x as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+            (target_image.size.y as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
             1,
         );
 

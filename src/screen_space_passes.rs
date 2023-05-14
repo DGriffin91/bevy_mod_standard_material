@@ -357,9 +357,13 @@ pub struct ScreenSpacePassesTargetImage {
 
 fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResMut<Assets<Image>>) {
     let window = windows.single();
+
+    let width = window.physical_width();
+    let height = window.physical_height();
+
     let size = Extent3d {
-        width: window.physical_width() / 4,
-        height: window.physical_height() / 4,
+        width,
+        height,
         depth_or_array_layers: 4,
     };
     let img = Image {
@@ -409,10 +413,7 @@ impl FrameData for ScreenSpacePassesTargetImage {
 
     fn size(&self, width: u32, height: u32) -> (u32, u32) {
         // make sure the size is divisible by work group
-        (
-            ((width / 3) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
-            ((height / 3) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
-        )
+        (width, height)
     }
 
     fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>) {

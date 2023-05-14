@@ -304,14 +304,14 @@ fn pbr(
                 let backface = max(dot(ray_dir, in.N), 0.0);
                 let off_d = max(1.0 - distance(sample_pos, in.world_position.xyz) * dist_factor, 0.0);
 
-                //let c = (proposed_col * weight) / max(w_sum, 1.0);
-                //let avg_w = w_sum / f32(M);
-                //let c = (proposed_col * weight) / f32(M);
+                let adj_w = off_n * backface;
+
                 let c = w_sum / max(0.00001, f32(M) * weight);
                 // idk why this 2 is here https://github.com/EmbarkStudios/kajiya/blob/main/assets/shaders/rtdgi/restir_resolve.hlsl#LL172C22-L172C22
                 let w = 2.0 * max(dot(in.N, ray_dir), 0.0) * (1.0 / (1.0 + dist * dist));
-                tot += proposed_col * c * w;//min(c * w, proposed_col * w);
-                tot_w += 1.0;
+                let limit_w = min(c * w, w); //force conservation TODO probably shouldn't be needed
+                tot += proposed_col * limit_w * adj_w; 
+                tot_w += 1.0 * adj_w;
             }
         }
     }
