@@ -93,7 +93,8 @@ fn distance_fn(_this_: DepthRaymarchDistanceFn, ray_point_cs: vec3<f32>, candida
     
 
     //let unfiltered_depth = 1.0 / prepass_depth(vec4<f32>(interp_uv * _this_.depth_tex_size, 0.0, 0.0), _this_.sample_index);
-    let FMIP = mix(_this_.mip_min_max.x, _this_.mip_min_max.y, saturate(candidate_t));
+    // TODO find a better curve, quickly move tward larger mips once the ray has traveled a bit
+    let FMIP = mix(_this_.mip_min_max.x, _this_.mip_min_max.y, saturate(candidate_t * 3.0));
     let MIP = i32(FMIP); //TODO figure out something more correct
     let mip_scale = pow(2.0, f32(MIP));
     let unfiltered_depth = 1.0 / textureLoad(prepass_downsample, vec2<i32>(interp_uv * (_this_.depth_tex_size / mip_scale)), MIP).w;

@@ -107,7 +107,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     hdr: true,
                     ..default()
                 },
-                tonemapping: Tonemapping::BlenderFilmic,
+                tonemapping: Tonemapping::TonyMcMapface,
                 transform: Transform::from_xyz(3.4, 1.7, 1.0)
                     .looking_at(Vec3::new(-0.1, 1.2, 0.2), Vec3::Y),
                 projection: Projection::Perspective(PerspectiveProjection {
@@ -124,10 +124,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },
             NormalPrepass,
-            //DepthPrepass,
-            //MotionVectorPrepass,
+            DepthPrepass,
+            MotionVectorPrepass,
             Fxaa::default(),
-            TemporalAntiAliasBundle::default(),
+            //TemporalAntiAliasBundle::default(),
             // {
             //    settings: TemporalAntiAliasSettings { reset: true },
             //    jitter: TemporalJitter { offset: Vec2::ZERO },

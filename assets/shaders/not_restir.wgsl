@@ -43,22 +43,22 @@ fn do_something(rr: NotAReservoir, samples: u32, ifrag_coord: vec2<i32>, surface
         let dir = normalize(distv);
         let dist = sqrt(dot(distv, distv));
 
-        let backface = dot(nor, -dir);
+        let backface = dot(nor, dir);
 
         var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
 
-        var weight = 1.0;
-        let brdf = max(dot(surface_normal, dir), 0.0) * gr * (1.0 / (1.0 + dist * dist));
-        weight *= brdf * f32(backface > -0.1);
+        var weight = gr * (1.0 / (1.0 + dist * dist));
+        let brdf = max(dot(surface_normal, dir), 0.0);
+        weight *= brdf * f32(backface < 0.01);
+        rr.w_sum += weight;
 
-        var threshold = weight / (weight + rr.w_sum);
+        var threshold = weight / rr.w_sum;
 
         if rr.M == 0u {
-            threshold = -1.0;
+            threshold = 1.0;
         }
 
         rr.M += 1u;
-        rr.w_sum += weight;
 
         if threshold > urand.z {
             rr.proposed_pos = prop_pos;
