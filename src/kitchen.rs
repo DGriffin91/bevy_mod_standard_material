@@ -13,7 +13,8 @@ use bevy::{
         prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
-    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    input::mouse::MouseMotion,
+    pbr::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
     render::camera::TemporalJitter,
 };
@@ -30,7 +31,8 @@ impl Plugin for KitchenPlugin {
             })
             .add_plugin(CameraControllerPlugin)
             .add_startup_system(setup)
-            .add_system(fix_sky_brightness);
+            .add_system(fix_sky_brightness)
+            .add_systems(Update, move_directional_light);
     }
 }
 
@@ -83,17 +85,25 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             color: Color::rgb(0.95, 0.93, 0.85),
             illuminance: 120000.0,
             shadows_enabled: true,
-            shadow_depth_bias: 0.1,
-            shadow_normal_bias: 0.1,
+            shadow_depth_bias: 0.10,
+            shadow_normal_bias: 1.5,
         },
-        cascade_shadow_config: CascadeShadowConfigBuilder {
-            num_cascades: 3,
-            minimum_distance: 0.1,
-            maximum_distance: 15.0,
-            first_cascade_far_bound: 5.0,
-            overlap_proportion: 0.2,
-        }
-        .into(),
+        //cascade_shadow_config: CascadeShadowConfigBuilder {
+        //    num_cascades: 2,
+        //    minimum_distance: 0.0,
+        //    maximum_distance: 12.0,
+        //    first_cascade_far_bound: 3.0,
+        //    overlap_proportion: 0.2,
+        //}
+        //.into(),
+        cascade_shadow_config: CascadeShadowConfig {
+            /// The (positive) distance to the far boundary of each cascade.
+            bounds: vec![6.0],
+            /// The proportion of overlap each cascade has with the previous cascade.
+            overlap_proportion: 0.5,
+            /// The (positive) distance to the near boundary of the first cascade.
+            minimum_distance: -6.0,
+        },
         ..default()
     });
 
@@ -136,4 +146,25 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             //},
         ))
         .insert(TraceSettings { frame: 0, fps: 0.0 });
+}
+
+fn move_directional_light(
+    mut query: Query<&mut Transform, With<DirectionalLight>>,
+    mut motion_evr: EventReader<MouseMotion>,
+    keys: Res<Input<KeyCode>>,
+) {
+    if !keys.pressed(KeyCode::L) {
+        return;
+    }
+    for mut trans in &mut query {
+        let euler = trans.rotation.to_euler(EulerRot::XYZ);
+        for ev in motion_evr.iter() {
+            trans.rotation = Quat::from_euler(
+                EulerRot::XYZ,
+                (euler.0.to_degrees() + ev.delta.y).to_radians(),
+                (euler.1.to_degrees() + ev.delta.x).to_radians(),
+                euler.2,
+            );
+        }
+    }
 }

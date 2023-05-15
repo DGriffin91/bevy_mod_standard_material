@@ -268,9 +268,9 @@ fn pbr(
     let depth = distance(in.world_position.xyz, view.world_position.xyz);
 
 
-    var proposed_pos = textureLoad(screenspace_passes, vec2<i32>(in.frag_coord.xy), 0u, 0).xyz;
-    let weight_data = textureLoad(screenspace_passes, vec2<i32>(in.frag_coord.xy), 1u, 0).xyz;
-    var proposed_col = textureLoad(screenspace_passes, vec2<i32>(in.frag_coord.xy), 4u, 0).xyz;
+    var proposed_pos = textureLoad(screenspace_passes, vec2<i32>(screen_uv * screenspace_passes_size), 0u, 0).xyz;
+    let weight_data = textureLoad(screenspace_passes, vec2<i32>(screen_uv * screenspace_passes_size), 1u, 0).xyz;
+    var proposed_col = textureLoad(screenspace_passes, vec2<i32>(screen_uv * screenspace_passes_size), 4u, 0).xyz;
     var M = u32(weight_data.x);
     var w_sum = weight_data.y;
     var weight = weight_data.z;
@@ -299,7 +299,7 @@ fn pbr(
     
 
     // BAD SSR
-    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 12u, vec2(2.0, 3.0)).rgb;
+    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 8u, vec2(2.0, 3.0)).rgb;
     indirect_light += ssr;
     //roughness = 0.01;
     

@@ -1,4 +1,9 @@
-// TODO need to at least be able to feedback
+/*
+TODO:
+We are writing to the same voxel cell over and over in the same compute pass
+Move voxels with view, needs to happen in voxel rate pass or equivalent 
+Optimize voxel traversal, we understep currently so we naively hit every voxel
+*/
 
 @group(0) @binding(4)
 var blue_noise_tex: texture_2d_array<f32>;
@@ -145,7 +150,7 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
     //}
 
     //reset sometimes, TODO restir probably doesn't just reset
-    let reset = hash_noise(ifrag_coord, globals.frame_count) * 256.0 + 128.0; 
+    let reset = hash_noise(ifrag_coord, globals.frame_count) * 192.0 + 64.0; 
 
     if f32(M) > reset {
        proposed_pos = vec3(F32_MAX);
@@ -168,8 +173,8 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
     var dmr = new_drm_for_restir();
     dmr.ray_start_cs = ray_start_ndc;
     
+    /*
     let recheck = hash_noise(ifrag_coord, globals.frame_count) * 16.0 + 32.0; 
-
     var recheck_fail = false;
     if f32(M) > recheck && proposed_pos.x != F32_MAX { // Rechecking
         let direction = normalize(proposed_pos - probe_pos);
@@ -217,6 +222,7 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
     //    weight = 0.0;
     //    probe_reset = true;
     //}
+    */
     
 
     for (var i = 0u; i < samples; i += 1u) {
@@ -312,7 +318,7 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
     let dist_to_hit = distance(proposed_pos, world_position_offs);
 
     let falloff = (1.0 / (1.0 + dist_to_hit * dist_to_hit));
-    var hysterisis = 0.1;
+    var hysterisis = 0.2;
     //if probe_reset {
     //    hysterisis = 1.0;
     //}
@@ -401,6 +407,7 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     if location.x >= size.x || location.y >= size.y {
         return;
     }
+    let ulocation = vec2<u32>(location);
     let flocation = vec2<f32>(location);
     let fprepass_size = vec2<f32>(textureDimensions(prepass_downsample).xy);
     let fsize = vec2<f32>(size);
@@ -451,27 +458,33 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let dist_factor = 1.0;
     var tot = vec3(0.0);
     var tot_w = 0.0;
-    let n = 8;
-    for (var x = -n; x <= n; x+=1) {
-        for (var y = -n; y <= n; y+=1) {
-            let coord = location + vec2(x, y);
-            if coord.x < 0 || coord.y < 0 || coord.x >= size.x || coord.y >= size.y {
-                continue;
-            }
-            let uv = vec2<f32>(coord) / fsize;
-            let px_dist = saturate(1.0 - distance(vec2(0.0, 0.0), vec2(f32(x), f32(y))) / f32(n + 1));
-            var w = px_dist;
-            let nd = textureLoad(prepass_downsample, vec2<i32>(uv * fprepass_size), 0);
-            let col = textureLoad(prev_tex, coord, 4, 0);
-    
-            let d = max(dot(nor_depth.xyz, nd.xyz) + 0.001, 0.0);
-            w = w * d * d * d; //lol
-            let px_ws = position_ndc_to_world(vec3(uv_to_ndc(uv), col.w));
-            let dist = distance(px_ws, world_position);
-            w = w * (1.0 - clamp(dist * dist_factor, 0.0, 1.0));
-            tot += col.rgb * w;
-            tot_w += w;
+    let samples = 10u;
+    let range = 20.0;
+    let white_frame_noise = white_frame_noise(8462u);
+    tot += textureLoad(prev_tex, location, 4, 0).xyz;
+    tot_w += 1.0;
+    for (var i = 0u; i <= samples; i+=1u) {
+        let seed = i * samples + globals.frame_count * samples;
+        let urand = fract_blue_noise_for_pixel(ulocation, seed, white_frame_noise) * 2.0 - 1.0;
+        let px_pos = vec2(urand.x * range, urand.y * range);
+        let coord = location + vec2<i32>(px_pos);
+        if coord.x < 0 || coord.y < 0 || coord.x >= size.x || coord.y >= size.y {
+            continue;
         }
+        let uv = vec2<f32>(coord) / fsize;
+        let px_dist = length(abs(urand.xy));
+        var w = px_dist;
+        let nd = textureLoad(prepass_downsample, vec2<i32>(uv * fprepass_size), 0);
+        let col = textureLoad(prev_tex, coord, 4, 0);
+    
+        let d = max(dot(nor_depth.xyz, nd.xyz) + 0.001, 0.0);
+        w = w * d * d * d; //lol
+        let px_ws = position_ndc_to_world(vec3(uv_to_ndc(uv), col.w));
+        let dist = distance(px_ws, world_position);
+        w = w * (1.0 - clamp(dist * dist_factor, 0.0, 1.0));
+        w = saturate(w);
+        tot += col.rgb * w;
+        tot_w += w;
     }
     textureStore(target_tex, location, 4, vec4(tot/tot_w, 1.0));
 

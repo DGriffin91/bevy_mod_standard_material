@@ -1,6 +1,6 @@
 const VOXEL_START = vec3<f32>(-2.0, -2.0, -2.0);
 const VOXEL_GIRD_SIZE = vec3<i32>(64, 64, 64);
-const VOXEL_SIZE = 0.4;
+const VOXEL_SIZE = 0.5;
 fn update_world_cache(probe_latest_color: vec3<f32>, probe_pos: vec3<f32>) {
     let coord = position_world_to_voxel_coord(probe_pos);
     textureStore(target_tex, coord, 5u, vec4(probe_latest_color, f32(globals.time)));
