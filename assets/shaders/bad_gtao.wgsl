@@ -47,8 +47,8 @@ fn rotation_matrix(to: vec3<f32>) -> mat3x3<f32> {
 //ScreenSpaceAmbientOcclusionSettings::Medium => (2, 2), // 8 spp (2 * (2 * 2)), plus optional temporal samples
 //ScreenSpaceAmbientOcclusionSettings::High => (3, 3), // 18 spp (3 * (3 * 2)), plus optional temporal samples
 //ScreenSpaceAmbientOcclusionSettings::Ultra => (9, 3), // 54 spp (9 * (3 * 2)), plus optional temporal samples
-const SLICE_COUNT = 3u;
-const SAMPLES_PER_SLICE_SIDE = 3u;
+const SLICE_COUNT = 2u;
+const SAMPLES_PER_SLICE_SIDE = 2u;
 const DIST_MULT = 1.0;
 
 fn bad_gtao(frag_coord: vec4<f32>, world_position: vec3<f32>, surface_normal: vec3<f32>) -> vec4<f32> {

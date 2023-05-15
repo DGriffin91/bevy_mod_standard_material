@@ -15,12 +15,6 @@ fn bad_ssr(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position: ve
     // Build a basis for sampling the BRDF, as BRDF sampling functions assume that the normal faces +Z.
     let tangent_to_world = build_orthonormal_basis(surface_normal);
 
-    let white_frame_noise = vec3(
-        hash_noise(vec2(0), globals.frame_count), 
-        hash_noise(vec2(1), globals.frame_count + 1024u),
-        hash_noise(vec2(2), globals.frame_count + 2048u)
-    );
-
     var dmr = DepthRayMarch_new_from_depth(depth_tex_dims);  
     dmr.linear_steps = linear_sample_count;
     dmr.ray_start_cs = ray_start_ndc; 
@@ -32,11 +26,10 @@ fn bad_ssr(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position: ve
 
     var tot = vec3(0.0);
     for (var i = 0u; i < samples; i += 1u) {
-        let urand = vec3(
-            fract(blue_noise_for_pixel(ufrag_coord, i * samples + 0u + globals.frame_count) + white_frame_noise.x),
-            fract(blue_noise_for_pixel(ufrag_coord, i * samples + 1u + globals.frame_count) + white_frame_noise.y),
-            fract(blue_noise_for_pixel(ufrag_coord, i * samples + 2u + globals.frame_count) + white_frame_noise.z),
-        );   
+        let seed = i * samples;
+        let white_frame_noise = white_frame_noise(globals.frame_count + i);
+        
+        let urand = fract_blue_noise_for_pixel(ufrag_coord, seed, white_frame_noise);    
     
         // Get a good quality sample from the BRDF, using VNDF
         let brdf_sample = brdf_sample(roughness_clamped, F0, tangent_to_world * wo, urand.xy);

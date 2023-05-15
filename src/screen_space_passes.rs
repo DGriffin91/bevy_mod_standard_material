@@ -35,7 +35,7 @@ use bevy_mod_bvh::pipeline_utils::{
 };
 
 const WORKGROUP_SIZE: u32 = 8;
-const LAYERS: u32 = 4;
+const LAYERS: u32 = 6;
 pub struct ScreenSpacePassesPlugin;
 impl Plugin for ScreenSpacePassesPlugin {
     fn build(&self, app: &mut App) {
@@ -364,7 +364,7 @@ fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResM
     let size = Extent3d {
         width,
         height,
-        depth_or_array_layers: 4,
+        depth_or_array_layers: LAYERS,
     };
     let img = Image {
         data: vec![0; get_image_bytes_count(size.width, size.height, 1, 2, 4) * LAYERS as usize],

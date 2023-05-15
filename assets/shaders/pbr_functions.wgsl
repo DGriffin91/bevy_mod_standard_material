@@ -266,55 +266,26 @@ fn pbr(
     let radius = 1.0;
     let dist_factor = 1.0;
     let depth = distance(in.world_position.xyz, view.world_position.xyz);
-    for (var x = 0u; x < search; x+=1u) {
-        let offset = vec2<i32>(
-            i32((hash_noise(vec2<i32>(in.frag_coord.xy), x + globals.frame_count) * 2.0 - 1.0) * radius),
-            i32((hash_noise(vec2<i32>(in.frag_coord.xy), x + 7852u + globals.frame_count) * 2.0 - 1.0) * radius),
-        );
-        //let i = u32(hash_noise(vec2<i32>(in.frag_coord.xy), x + 4829u + globals.frame_count) * f32(n));
 
-        let foffset = vec2<f32>(offset);
-        let samp_uv = screen_uv + foffset / view.viewport.zw;
 
-        //let px_dist = saturate(1.0 - distance(vec2(0.0, 0.0), foffset) / f32(n + 1u));
+    var proposed_pos = textureLoad(screenspace_passes, vec2<i32>(in.frag_coord.xy), 0u, 0).xyz;
+    let weight_data = textureLoad(screenspace_passes, vec2<i32>(in.frag_coord.xy), 1u, 0).xyz;
+    var proposed_col = textureLoad(screenspace_passes, vec2<i32>(in.frag_coord.xy), 4u, 0).xyz;
+    var M = u32(weight_data.x);
+    var w_sum = weight_data.y;
+    var weight = weight_data.z;
+    let ray_dir = normalize(proposed_pos - in.world_position.xyz);
+    let dist = distance(proposed_pos, in.world_position.xyz);
 
-        let probe_coord = vec2<i32>(screen_uv * screenspace_passes_size) + offset;
-        var proposed_pos = textureLoad(screenspace_passes, probe_coord, 0u, 0).xyz;
-        let weight_data = textureLoad(screenspace_passes, probe_coord, 1u, 0).xyz;
-        var M = u32(weight_data.x);
-        var w_sum = weight_data.y;
-        var weight = weight_data.z;
+    let backface = max(dot(ray_dir, in.N), 0.0);
 
-        let ray_dir = normalize(proposed_pos - in.world_position.xyz);
-        if proposed_pos.x != F32_MAX {
-            let hit_uv = ndc_to_uv(position_world_to_ndc(proposed_pos).xy);
-            let closest_motion_vector = prepass_motion_vector(vec4<f32>(hit_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
-            let history_uv = hit_uv - closest_motion_vector;
-            if history_uv.x > 0.0 && history_uv.x < 1.0 && history_uv.y > 0.0 && history_uv.y < 1.0 {
-                
-                let offset_nd = normalize(textureSampleLevel(prepass_downsample, linear_sampler, samp_uv, 1.0));
-                let sample_pos = position_ndc_to_world(vec3(uv_to_ndc(samp_uv), offset_nd.w));
+    let c = w_sum / max(0.00001, f32(M) * weight);
+    // idk why this 2 is here https://github.com/EmbarkStudios/kajiya/blob/main/assets/shaders/rtdgi/restir_resolve.hlsl#LL172C22-L172C22
+    let gw = 2.0 * max(dot(in.N, ray_dir), 0.0);
+    let limit_w = min(c * gw, gw); //force conservation TODO probably shouldn't be needed
+    tot += proposed_col;// * gw; //TODO use SH so we can use gw
+    tot_w += 1.0;
 
-                
-                let proposed_col = textureSampleLevel(prev_frame_tex, linear_sampler, history_uv, 2.0).rgb;
-
-                let dist = distance(proposed_pos, in.world_position.xyz);
-
-                let off_n = max(distance(offset_nd.xyz, in.N), 0.0);
-                let backface = max(dot(ray_dir, in.N), 0.0);
-                let off_d = max(1.0 - distance(sample_pos, in.world_position.xyz) * dist_factor, 0.0);
-
-                let adj_w = off_n * backface;
-
-                let c = w_sum / max(0.00001, f32(M) * weight);
-                // idk why this 2 is here https://github.com/EmbarkStudios/kajiya/blob/main/assets/shaders/rtdgi/restir_resolve.hlsl#LL172C22-L172C22
-                let w = 2.0 * max(dot(in.N, ray_dir), 0.0) * (1.0 / (1.0 + dist * dist));
-                let limit_w = min(c * w, w); //force conservation TODO probably shouldn't be needed
-                tot += proposed_col * limit_w * adj_w; 
-                tot_w += 1.0 * adj_w;
-            }
-        }
-    }
     indirect_light += max(tot / tot_w, vec3(0.0)) * diffuse_color;
 
 //    let ssgi = textureSampleLevel(screenspace_passes, linear_sampler, screen_uv + best_lod_offset, 3u, 0.0).rgb;
@@ -328,8 +299,8 @@ fn pbr(
     
 
     // BAD SSR
-//    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0).rgb;
-//    indirect_light += ssr;
+    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 12u, vec2(2.0, 3.0)).rgb;
+    indirect_light += ssr;
     //roughness = 0.01;
     
     //if roughness >= 0.08 {
@@ -355,8 +326,8 @@ fn pbr(
 
     //indirect_light += pt_image.rgb * diffuse_color;
 //    
-//    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
-//    indirect_light *= ssao;
+    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
+    indirect_light *= pow(ssao, vec3(0.5));
 
 
     // Environment map light (indirect)
