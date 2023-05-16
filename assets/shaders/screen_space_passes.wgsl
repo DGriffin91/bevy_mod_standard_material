@@ -36,9 +36,9 @@ var motion_vector_prepass_texture: texture_2d<f32>;
 @group(0) @binding(8)
 var prepass_downsample: texture_2d<f32>;
 @group(0) @binding(9)
-var prev_tex: texture_2d_array<f32>;
+var screen_passes_processed: texture_2d_array<f32>;
 @group(0) @binding(10)
-var target_tex: texture_storage_2d_array<rgba16float, write>;
+var screen_passes_target: texture_storage_2d_array<rgba16float, write>;
 
 
 
@@ -50,6 +50,7 @@ var target_tex: texture_storage_2d_array<rgba16float, write>;
 #import "shaders/bad_ssr.wgsl"
 #import "shaders/bad_ssgi.wgsl"
 #import "shaders/ssr_uv_generate.wgsl"
+#define VOXEL_UPDATE_FN
 #import "shaders/voxel_cache.wgsl"
 
 fn new_drm_for_restir() -> DepthRayMarch {
@@ -66,10 +67,10 @@ fn new_drm_for_restir() -> DepthRayMarch {
 
 fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position: vec3<f32>, samples: u32) {
     
-    let trace_dist = 5.0; //after this distance, we switch to the radiance cache
+    let trace_dist = 10.0; //after this distance, we switch to the radiance cache
 
 
-    let itex_dims = vec2<i32>(textureDimensions(prev_tex).xy);
+    let itex_dims = vec2<i32>(textureDimensions(screen_passes_processed).xy);
     let tex_dims = vec2<f32>(itex_dims);
     let frag_size = 1.0 / tex_dims;
     let screen_uv = vec2<f32>(ifrag_coord) / tex_dims + frag_size * 0.5;
@@ -92,7 +93,7 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
     if history_hit_screen {
         var selected_offset = vec2(0, 0);
         var closest = F32_MAX;
-        let first_probe_pos = textureLoad(prev_tex, vec2<i32>(tex_dims * screen_history_uv), 2u, 0).xyz;
+        let first_probe_pos = textureLoad(screen_passes_processed, vec2<i32>(tex_dims * screen_history_uv), 2u, 0).xyz;
         if distance(first_probe_pos, world_position_offs) > 0.001 {
             for (var x = -2; x <= 2; x += 1) {
                 for (var y = -2; y <= 2; y += 1) {
@@ -101,7 +102,7 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
                     if coord.x < 0 || coord.y < 0 || coord.x >= itex_dims.x || coord.y >= itex_dims.y {
                         continue;
                     }
-                    let test_probe_pos = textureLoad(prev_tex, coord, 2u, 0).xyz;
+                    let test_probe_pos = textureLoad(screen_passes_processed, coord, 2u, 0).xyz;
                     let dist = distance(test_probe_pos, world_position_offs);
                     if dist < closest {
                         selected_offset = offset;
@@ -113,12 +114,12 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
         }
 
         let sample_coord = vec2<i32>(tex_dims * screen_history_uv) + selected_offset;
-        proposed_pos = textureLoad(prev_tex, sample_coord, 0u, 0).xyz;
-        let weight_data = textureLoad(prev_tex, sample_coord, 1u, 0).xyz;
-        probe_latest_color = textureLoad(prev_tex, sample_coord, 3u, 0).xyz;
+        proposed_pos = textureLoad(screen_passes_processed, sample_coord, 0u, 0).xyz;
+        let weight_data = textureLoad(screen_passes_processed, sample_coord, 1u, 0).xyz;
+        probe_latest_color = textureLoad(screen_passes_processed, sample_coord, 3u, 0).xyz;
 
-        //probe_color = textureLoad(prev_tex, sample_coord, 4u, 0).xyz;
-        probe_color = textureSampleLevel(prev_tex, linear_sampler, screen_history_uv, 4u, 0.0).xyz;
+        //probe_color = textureLoad(screen_passes_processed, sample_coord, 4u, 0).xyz;
+        probe_color = textureSampleLevel(screen_passes_processed, linear_sampler, screen_history_uv, 4u, 0.0).xyz;
 
         M = u32(weight_data.x);
         w_sum = weight_data.y;
@@ -283,17 +284,17 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
                 }
             }
         } else {
-            let max_voxel_age = 45.0;
-            let voxel_hit = march_voxel_grid(probe_pos + direction * (VOXEL_SIZE * (1.0 + jitter)), direction, 64u, false, max_voxel_age);
+            let max_voxel_age = 1000.0;
+            let voxel_hit = march_voxel_grid(probe_pos + direction * 1.0, direction, 64u, 1u, max_voxel_age);
             if voxel_hit.t > VOXEL_SIZE * (1.0 + urand.w) {
                 let age = max(globals.time - voxel_hit.age, 1.0);
                 let dist = voxel_hit.t;
-                let voxel_derate = 1.0 * saturate(1.0 - pow(age, 1.0) / max_voxel_age);
+                let voxel_derate = 0.8 * saturate(1.0 - pow(age, 1.0) / max_voxel_age);
                 let color = voxel_hit.color * voxel_derate;
                 let prop_pos = probe_pos + direction * voxel_hit.t;
                 var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
                 let brdf = max(dot(surface_normal, direction), 0.0);
-                var new_weight = gr * (1.0 / (1.0 + dist * dist)); // stronger distance falloff for voxels
+                var new_weight = gr * (1.0 / (1.0 + dist * dist));
                 new_weight *= brdf * voxel_derate;
                 new_weight = max(new_weight, 0.0);
 
@@ -332,19 +333,18 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
     //probe_color = read_world_cache(world_position).xyz;
 
 
-    textureStore(target_tex, ifrag_coord, 0u, vec4(proposed_pos, 0.0));
-    textureStore(target_tex, ifrag_coord, 1u, vec4(f32(M), w_sum, weight, 0.0));
-    textureStore(target_tex, ifrag_coord, 2u, vec4(probe_pos, 0.0));
-    textureStore(target_tex, ifrag_coord, 3u, vec4(probe_latest_color, 0.0));
-    textureStore(target_tex, ifrag_coord, 4u, vec4(probe_color, 0.0));
+    textureStore(screen_passes_target, ifrag_coord, 0u, vec4(proposed_pos, 0.0));
+    textureStore(screen_passes_target, ifrag_coord, 1u, vec4(f32(M), w_sum, weight, 0.0));
+    textureStore(screen_passes_target, ifrag_coord, 2u, vec4(probe_pos, 0.0));
+    textureStore(screen_passes_target, ifrag_coord, 3u, vec4(probe_latest_color, 0.0));
+    textureStore(screen_passes_target, ifrag_coord, 4u, vec4(probe_color, 0.0));
     let last_world_cache = read_world_cache(probe_pos);
+    
     let cache_color = last_world_cache.xyz;
     let cache_age = last_world_cache.w;
     if history_hit_screen {
         let screen_color = textureSampleLevel(prev_frame_tex, linear_sampler, screen_history_uv, 2.0).rgb;
-        //ridiculous but just screen_color is too dark, TODO find something better
-        let c = mix(probe_latest_color, screen_color, 0.6); 
-        update_world_cache(mix(cache_color, c, 0.1), probe_pos);
+        update_world_cache(mix(cache_color, screen_color, 0.1), probe_pos);
     }
 }
 
@@ -361,7 +361,7 @@ fn get_f0(reflectance: f32, metallic: f32, metal_color: vec3<f32>) -> vec3<f32> 
 fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
     let flocation = vec2<f32>(location);
-    let target_dims = vec2<i32>(textureDimensions(target_tex).xy);
+    let target_dims = vec2<i32>(textureDimensions(screen_passes_target).xy);
     if location.x >= target_dims.x || location.y >= target_dims.y {
         return;
     }
@@ -403,7 +403,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 @compute @workgroup_size(8, 8, 1)
 fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
-    let size = vec2<i32>(textureDimensions(target_tex).xy);
+    let size = vec2<i32>(textureDimensions(screen_passes_target).xy);
     if location.x >= size.x || location.y >= size.y {
         return;
     }
@@ -415,9 +415,9 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let screen_uv = flocation / fsize + frag_size * 0.5; // TODO verify
     
 
-    //var center_proposed_pos = textureLoad(prev_tex, location, 0u, 0).xyz;
-    //let center_weight_data = textureLoad(prev_tex, location, 1u, 0).xyz;
-    //let center_probe_pos = textureLoad(prev_tex, location, 2u, 0).xyz;
+    //var center_proposed_pos = textureLoad(screen_passes_processed, location, 0u, 0).xyz;
+    //let center_weight_data = textureLoad(screen_passes_processed, location, 1u, 0).xyz;
+    //let center_probe_pos = textureLoad(screen_passes_processed, location, 2u, 0).xyz;
     //var center_M = u32(center_weight_data.x);
     //var center_w_sum = center_weight_data.y;
     //var center_weight = center_weight_data.z;
@@ -430,9 +430,9 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     //            continue;
     //        }
     //        let offset = vec2(x, y);
-    //        let proposed_pos = textureLoad(prev_tex, location + offset, 0u, 0).xyz;
-    //        let weight_data = textureLoad(prev_tex, location + offset, 1u, 0).xyz;
-    //        let probe_pos = textureLoad(prev_tex, location + offset, 2u, 0).xyz;
+    //        let proposed_pos = textureLoad(screen_passes_processed, location + offset, 0u, 0).xyz;
+    //        let weight_data = textureLoad(screen_passes_processed, location + offset, 1u, 0).xyz;
+    //        let probe_pos = textureLoad(screen_passes_processed, location + offset, 2u, 0).xyz;
     //        let M = u32(weight_data.x);
     //        let w_sum = weight_data.y;
     //        let weight = weight_data.z;
@@ -447,12 +447,12 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     //    }
     //}
 
-    //textureStore(target_tex, location, 0u, vec4(center_proposed_pos, 0.0));
-    //textureStore(target_tex, location, 1u, vec4(f32(center_M), center_w_sum, center_weight, 0.0));
-    //textureStore(target_tex, location, 2u, vec4(center_probe_pos, 0.0));
+    //textureStore(screen_passes_target, location, 0u, vec4(center_proposed_pos, 0.0));
+    //textureStore(screen_passes_target, location, 1u, vec4(f32(center_M), center_w_sum, center_weight, 0.0));
+    //textureStore(screen_passes_target, location, 2u, vec4(center_probe_pos, 0.0));
 
     
-    let v = textureSampleLevel(prev_tex, linear_sampler, screen_uv, 4, 0.0);
+    let v = textureSampleLevel(screen_passes_processed, linear_sampler, screen_uv, 4, 0.0);
     let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 1.0);
     let world_position = position_ndc_to_world(vec3(uv_to_ndc(screen_uv), v.w));
     let dist_factor = 1.0;
@@ -461,7 +461,7 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let samples = 10u;
     let range = 20.0;
     let white_frame_noise = white_frame_noise(8462u);
-    tot += textureLoad(prev_tex, location, 4, 0).xyz;
+    tot += textureLoad(screen_passes_processed, location, 4, 0).xyz;
     tot_w += 1.0;
     for (var i = 0u; i <= samples; i+=1u) {
         let seed = i * samples + globals.frame_count * samples;
@@ -475,7 +475,7 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         let px_dist = length(abs(urand.xy));
         var w = px_dist;
         let nd = textureLoad(prepass_downsample, vec2<i32>(uv * fprepass_size), 0);
-        let col = textureLoad(prev_tex, coord, 4, 0);
+        let col = textureLoad(screen_passes_processed, coord, 4, 0);
     
         let d = max(dot(nor_depth.xyz, nd.xyz) + 0.001, 0.0);
         w = w * d * d * d; //lol
@@ -486,13 +486,13 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         tot += col.rgb * w;
         tot_w += w;
     }
-    textureStore(target_tex, location, 4, vec4(tot/tot_w, 1.0));
+    textureStore(screen_passes_target, location, 4, vec4(tot/tot_w, 1.0));
 
 
-    textureStore(target_tex, location, 0, textureLoad(prev_tex, location, 0, 0));
-    textureStore(target_tex, location, 1, textureLoad(prev_tex, location, 1, 0));
-    textureStore(target_tex, location, 2, textureLoad(prev_tex, location, 2, 0));
-    textureStore(target_tex, location, 3, textureLoad(prev_tex, location, 3, 0));
-    //textureStore(target_tex, location, 4, textureLoad(prev_tex, location, 4, 0));
-    textureStore(target_tex, location, 5, textureLoad(prev_tex, location, 5, 0));
+    textureStore(screen_passes_target, location, 0, textureLoad(screen_passes_processed, location, 0, 0));
+    textureStore(screen_passes_target, location, 1, textureLoad(screen_passes_processed, location, 1, 0));
+    textureStore(screen_passes_target, location, 2, textureLoad(screen_passes_processed, location, 2, 0));
+    textureStore(screen_passes_target, location, 3, textureLoad(screen_passes_processed, location, 3, 0));
+    //textureStore(screen_passes_target, location, 4, textureLoad(screen_passes_processed, location, 4, 0));
+    textureStore(screen_passes_target, location, 5, textureLoad(screen_passes_processed, location, 5, 0));
 }

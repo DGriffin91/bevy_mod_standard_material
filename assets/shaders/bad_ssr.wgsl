@@ -59,13 +59,3 @@ fn bad_ssr(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position: ve
 
     return vec4(tot, 1.0);
 }
-
-fn interpolate_colors(value: f32, pos1: f32, color1: vec3<f32>, pos2: f32, color2: vec3<f32>, pos3: f32, color3: vec3<f32>) -> vec3<f32> {
-    let t1 = smoothstep(pos1, pos2, value);
-    let t2 = smoothstep(pos2, pos3, value);
-
-    let mid = mix(color1, color2, t1);
-    let end = mix(color2, color3, t2);
-
-    return mix(mid, end, t2);
-}

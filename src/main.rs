@@ -3,6 +3,7 @@
 mod bistro;
 mod camera_controller;
 mod copy_frame;
+mod debug_view;
 mod helmet;
 mod image_window_auto_size;
 mod kitchen;
@@ -16,6 +17,7 @@ mod sphere;
 use bevy::{
     core_pipeline::{core_3d, experimental::taa::TemporalAntiAliasPlugin},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    input::mouse::MouseMotion,
     pbr::DirectionalLightShadowMap,
     prelude::*,
     render::{extract_resource::ExtractResourcePlugin, render_graph::RenderGraphApp, RenderApp},
@@ -25,6 +27,7 @@ use bevy_coordinate_systems::CoordinateTransformationsPlugin;
 use bevy_mod_bvh::{DynamicTLAS, StaticTLAS};
 use bistro::BistroPlugin;
 use copy_frame::CopyFramePlugin;
+use debug_view::DebugViewPlugin;
 use helmet::HelmetScenePlugin;
 use kitchen::KitchenPlugin;
 use load_sponza::SponzaPlugin;
@@ -53,7 +56,7 @@ fn main() {
                 })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        present_mode: PresentMode::AutoVsync,
+                        present_mode: PresentMode::Immediate,
                         ..default()
                     }),
                     ..default()
@@ -64,6 +67,7 @@ fn main() {
         //.add_plugin(PathTracePlugin)
         .add_plugin(ScreenSpacePassesPlugin)
         .add_plugin(CoordinateTransformationsPlugin)
+        .add_plugin(DebugViewPlugin)
         .add_plugin(ExtractResourcePlugin::<BlueNoise>::default())
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
         .add_system(swap_standard_material)
@@ -71,7 +75,8 @@ fn main() {
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(TemporalAntiAliasPlugin)
         .add_startup_system(load_blue_noise)
-        .add_startup_system(no_empty_tlas);
+        .add_startup_system(no_empty_tlas)
+        .add_systems(Update, move_directional_light);
 
     app.run();
 }
@@ -99,4 +104,25 @@ fn no_empty_tlas(
             ..default()
         })
         .insert(DynamicTLAS);
+}
+
+fn move_directional_light(
+    mut query: Query<&mut Transform, With<DirectionalLight>>,
+    mut motion_evr: EventReader<MouseMotion>,
+    keys: Res<Input<KeyCode>>,
+) {
+    if !keys.pressed(KeyCode::L) {
+        return;
+    }
+    for mut trans in &mut query {
+        let euler = trans.rotation.to_euler(EulerRot::XYZ);
+        for ev in motion_evr.iter() {
+            trans.rotation = Quat::from_euler(
+                EulerRot::XYZ,
+                (euler.0.to_degrees() + ev.delta.y).to_radians(),
+                (euler.1.to_degrees() + ev.delta.x).to_radians(),
+                euler.2,
+            );
+        }
+    }
 }

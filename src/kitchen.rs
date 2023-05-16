@@ -31,8 +31,7 @@ impl Plugin for KitchenPlugin {
             })
             .add_plugin(CameraControllerPlugin)
             .add_startup_system(setup)
-            .add_system(fix_sky_brightness)
-            .add_systems(Update, move_directional_light);
+            .add_system(fix_sky_brightness);
     }
 }
 
@@ -134,10 +133,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },
             NormalPrepass,
-            //DepthPrepass,
-            //MotionVectorPrepass,
+            DepthPrepass,
+            MotionVectorPrepass,
             Fxaa::default(),
-            TemporalAntiAliasBundle::default(),
+            //TemporalAntiAliasBundle::default(),
             // {
             //    settings: TemporalAntiAliasSettings { reset: true },
             //    jitter: TemporalJitter { offset: Vec2::ZERO },
@@ -146,25 +145,4 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             //},
         ))
         .insert(TraceSettings { frame: 0, fps: 0.0 });
-}
-
-fn move_directional_light(
-    mut query: Query<&mut Transform, With<DirectionalLight>>,
-    mut motion_evr: EventReader<MouseMotion>,
-    keys: Res<Input<KeyCode>>,
-) {
-    if !keys.pressed(KeyCode::L) {
-        return;
-    }
-    for mut trans in &mut query {
-        let euler = trans.rotation.to_euler(EulerRot::XYZ);
-        for ev in motion_evr.iter() {
-            trans.rotation = Quat::from_euler(
-                EulerRot::XYZ,
-                (euler.0.to_degrees() + ev.delta.y).to_radians(),
-                (euler.1.to_degrees() + ev.delta.x).to_radians(),
-                euler.2,
-            );
-        }
-    }
 }

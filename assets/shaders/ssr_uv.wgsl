@@ -9,7 +9,7 @@ fn ssr_uv(screen_uv: vec2<f32>, surface_normal: vec3<f32>, world_position: vec3<
         for (var y = -n; y < n; y+=1) {
             let foffset = vec2(f32(x), f32(y)) * frag_size * roughness * 4.0;
 
-            var uv = textureSampleLevel(screenspace_passes, prev_frame_sampler, screen_uv + foffset, 0, 0.0).xy;
+            var uv = textureSampleLevel(screen_passes_processed, prev_frame_sampler, screen_uv + foffset, 0, 0.0).xy;
             let closest_motion_vector = prepass_motion_vector(vec4<f32>(uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
             let history_uv = uv - closest_motion_vector;
             if history_uv.x > 0.0 && history_uv.x < 1.0 && history_uv.y > 0.0 && history_uv.y < 1.0 {

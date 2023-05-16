@@ -3,7 +3,7 @@ use bevy::{
         MaterialPipeline, MaterialPipelineKey, StandardMaterialFlags, PBR_PREPASS_SHADER_HANDLE,
     },
     prelude::*,
-    reflect::{FromReflect, Reflect, TypeUuid},
+    reflect::TypeUuid,
     render::{
         extract_resource::ExtractResource,
         mesh::MeshVertexBufferLayout,
