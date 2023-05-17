@@ -23,11 +23,13 @@ var screen_passes_target: texture_2d_array<f32>;
 @group(0) @binding(7)
 var screen_passes_processed: texture_2d_array<f32>;
 @group(0) @binding(8)
-var depth_prepass_texture: texture_depth_2d;
+var voxel_cache: texture_3d<f32>;
 @group(0) @binding(9)
-var normal_prepass_texture: texture_2d<f32>;
-@group(0) @binding(10)
 var motion_vector_prepass_texture: texture_2d<f32>;
+@group(0) @binding(10)
+var depth_prepass_texture: texture_depth_2d;
+@group(0) @binding(11)
+var normal_prepass_texture: texture_2d<f32>;
 
 #import "shaders/voxel_cache.wgsl"
 
@@ -40,13 +42,17 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let world_position = position_ndc_to_world(vec3(uv_to_ndc(in.uv), nor_depth.w));
     let V = normalize(world_position - view.world_position.xyz);
 
-    let last_world_cache = read_world_cache(world_position);
+    let last_world_cache = textureLoad(voxel_cache, vec3<i32>(position_world_to_fvoxel(world_position)), 0);
 
-    let hit = march_voxel_grid(view.world_position.xyz, V, 128u, 1u, 1000.0);
+    let hit = march_voxel_grid(view.world_position.xyz, V, 512u, 1u, 1000.0);
 
+    var col = hit.color;
 
+    if hit.t < 0.0 {
+        col = frame_col.rgb;
+    }
 
     //return frame_col;
-    return vec4(vec3(last_world_cache.rgb), 1.0);
-    //return vec4(vec3(hit.color), 1.0); //hit.color * 
+    //return vec4(vec3(last_world_cache.rgb), 1.0);
+    return vec4(vec3(col), 1.0); //hit.color * 
 }

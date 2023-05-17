@@ -19,7 +19,7 @@ use bevy::{
 use crate::{
     copy_frame::CopyFrameData, image_window_auto_size::ImageUpdate,
     path_trace::PathTraceTargetImage, prepass_downsample::PrepassDownsampleImage,
-    screen_space_passes::ScreenSpacePassesTargetImage,
+    screen_space_passes::ScreenSpacePassesTargetImage, voxel_pass::VoxelPassesTargetImage,
 };
 
 /// A material with "standard" properties used in PBR lighting
@@ -256,6 +256,8 @@ pub struct CustomStandardMaterial {
     #[texture(18, dimension = "2d_array")]
     #[sampler(19)]
     pub screenspace_passes: Handle<Image>,
+    #[texture(20, dimension = "3d")]
+    pub voxel_cache: Handle<Image>,
 }
 
 /// The GPU representation of the uniform data of a [`StandardMaterial`].
@@ -424,6 +426,7 @@ pub fn swap_standard_material(
     prepass_downsample: Res<PrepassDownsampleImage>,
     pathtrace_target_img: Option<Res<PathTraceTargetImage>>,
     screenspace_passes_target_image: Res<ScreenSpacePassesTargetImage>,
+    voxel_cache: Res<VoxelPassesTargetImage>,
 ) {
     for event in material_events.iter() {
         let handle = match event {
@@ -458,6 +461,7 @@ pub fn swap_standard_material(
                     None
                 },
                 screenspace_passes: screenspace_passes_target_image.processed_img.clone(),
+                voxel_cache: voxel_cache.current.clone(),
             });
             for (entity, entity_mat_h) in entites.iter() {
                 if entity_mat_h == handle {

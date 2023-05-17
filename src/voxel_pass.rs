@@ -2,12 +2,12 @@ use std::borrow::Cow;
 
 use crate::{
     copy_frame::CopyFrameData,
-    image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
-    pbr_material::{BlueNoise, CustomStandardMaterial},
+    image_window_auto_size::get_image_bytes_count,
+    pbr_material::BlueNoise,
     prepass_downsample::{
         prepass_get_bind_group_layout_entries, PrepassDownsampleImage, PrepassDownsampleNode,
     },
-    voxel_pass::{VoxelPassNode, VoxelPassesTargetImage},
+    screen_space_passes::{ScreenSpacePassesNode, ScreenSpacePassesTargetImage},
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
@@ -35,32 +35,26 @@ use bevy_mod_bvh::pipeline_utils::{
     globals_entry, image_entry, sampler_entry, storage_tex_write, view_entry,
 };
 
-const WORKGROUP_SIZE: u32 = 8;
-const LAYERS: u32 = 6;
-pub struct ScreenSpacePassesPlugin;
-impl Plugin for ScreenSpacePassesPlugin {
+//const WORKGROUP_SIZE: u32 = 8;
+const SIZE: u32 = 128;
+
+pub struct VoxelPassPlugin;
+impl Plugin for VoxelPassPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_image)
-            .add_systems(
-                Update,
-                auto_resize_image::<CustomStandardMaterial, ScreenSpacePassesTargetImage>,
-            )
-            .add_plugin(ExtractResourcePlugin::<ScreenSpacePassesTargetImage>::default());
+            .add_plugin(ExtractResourcePlugin::<VoxelPassesTargetImage>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
         render_app
-            .add_render_graph_node::<ScreenSpacePassesNode>(
-                core_3d::graph::NAME,
-                ScreenSpacePassesNode::NAME,
-            )
+            .add_render_graph_node::<VoxelPassNode>(core_3d::graph::NAME, VoxelPassNode::NAME)
             .add_render_graph_edges(
                 core_3d::graph::NAME,
                 &[
+                    PrepassDownsampleNode::NAME,
                     VoxelPassNode::NAME,
-                    ScreenSpacePassesNode::NAME,
                     core_3d::graph::node::MAIN_OPAQUE_PASS,
                 ],
             );
@@ -75,7 +69,7 @@ impl Plugin for ScreenSpacePassesPlugin {
     }
 }
 
-pub struct ScreenSpacePassesNode {
+pub struct VoxelPassNode {
     query: QueryState<
         (
             &'static ViewUniformOffset,
@@ -86,11 +80,11 @@ pub struct ScreenSpacePassesNode {
     >,
 }
 
-impl ScreenSpacePassesNode {
-    pub const NAME: &str = "ScreenSpacePassesNode";
+impl VoxelPassNode {
+    pub const NAME: &str = "VoxelPassesNode";
 }
 
-impl FromWorld for ScreenSpacePassesNode {
+impl FromWorld for VoxelPassNode {
     fn from_world(world: &mut World) -> Self {
         Self {
             query: QueryState::new(world),
@@ -98,7 +92,7 @@ impl FromWorld for ScreenSpacePassesNode {
     }
 }
 
-impl Node for ScreenSpacePassesNode {
+impl Node for VoxelPassNode {
     fn update(&mut self, world: &mut World) {
         self.query.update_archetypes(world);
     }
@@ -123,10 +117,17 @@ impl Node for ScreenSpacePassesNode {
             return Ok(());
         };
 
-        let Some(screenspace_target) = world.get_resource::<ScreenSpacePassesTargetImage>() else {
+        let Some(voxel_passes_image) = world.get_resource::<VoxelPassesTargetImage>() else {
             return Ok(());
         };
-        let Some(target_image) = images.get(&screenspace_target.current_img) else {
+        let Some(prev_voxel_image) = images.get(&voxel_passes_image.prev) else {
+            return Ok(());
+        };
+        let Some(current_voxel_image) = images.get(&voxel_passes_image.current) else {
+            return Ok(());
+        };
+
+        let Some(screenspace_target) = world.get_resource::<ScreenSpacePassesTargetImage>() else {
             return Ok(());
         };
         let Some(processed_image) = images.get(&screenspace_target.processed_img) else {
@@ -142,13 +143,6 @@ impl Node for ScreenSpacePassesNode {
 
         let blue_noise = world.resource::<BlueNoise>();
         let Some(blue_noise) = images.get(&blue_noise.0) else {
-            return Ok(());
-        };
-
-        let Some(voxel_passes_image) = world.get_resource::<VoxelPassesTargetImage>() else {
-            return Ok(());
-        };
-        let Some(current_voxel_image) = images.get(&voxel_passes_image.current) else {
             return Ok(());
         };
 
@@ -168,24 +162,12 @@ impl Node for ScreenSpacePassesNode {
         let Some(update_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.pipeline_id) else {
             return Ok(());
         };
-        let Some(blur_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.blur_pipeline_id) else {
-            return Ok(());
-        };
 
         let depth_binding = prepass_textures.depth.as_ref().unwrap();
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
-        let mut entries = vec![
-            // at the start so they are easy to swap for the blur
-            BindGroupEntry {
-                binding: 9,
-                resource: BindingResource::TextureView(&processed_image.texture_view),
-            },
-            BindGroupEntry {
-                binding: 10,
-                resource: BindingResource::TextureView(&target_image.texture_view),
-            },
+        let entries = vec![
             BindGroupEntry {
                 binding: 0,
                 resource: view_uniforms.clone(),
@@ -223,6 +205,14 @@ impl Node for ScreenSpacePassesNode {
                 resource: BindingResource::TextureView(&prepass_downsample_tex.texture_view),
             },
             BindGroupEntry {
+                binding: 9,
+                resource: BindingResource::TextureView(&processed_image.texture_view),
+            },
+            BindGroupEntry {
+                binding: 10,
+                resource: BindingResource::TextureView(&prev_voxel_image.texture_view),
+            },
+            BindGroupEntry {
                 binding: 11,
                 resource: BindingResource::TextureView(&current_voxel_image.texture_view),
             },
@@ -233,7 +223,7 @@ impl Node for ScreenSpacePassesNode {
                 render_context
                     .render_device()
                     .create_bind_group(&BindGroupDescriptor {
-                        label: Some("ScreenSpacePassesNode_bind_group"),
+                        label: Some("voxel_pass_bind_group"),
                         layout: &pipeline.layout,
                         entries: &entries,
                     });
@@ -244,39 +234,17 @@ impl Node for ScreenSpacePassesNode {
 
             pass.set_pipeline(update_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
-            pass.dispatch_workgroups(
-                target_image.size.x as u32 / WORKGROUP_SIZE,
-                target_image.size.y as u32 / WORKGROUP_SIZE,
-                1,
-            );
+            pass.dispatch_workgroups(SIZE, SIZE, SIZE);
         }
-
         {
-            // swap prev and next target
-            let a = entries[0].binding;
-            let b = entries[1].binding;
-            entries[0].binding = b;
-            entries[1].binding = a;
-
-            let bind_group =
-                render_context
-                    .render_device()
-                    .create_bind_group(&BindGroupDescriptor {
-                        label: Some("ScreenSpacePassesNode_bind_group"),
-                        layout: &pipeline.layout,
-                        entries: &entries,
-                    });
-
-            let mut pass = render_context
-                .command_encoder()
-                .begin_compute_pass(&ComputePassDescriptor::default());
-
-            pass.set_pipeline(blur_pipeline);
-            pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
-            pass.dispatch_workgroups(
-                target_image.size.x as u32 / WORKGROUP_SIZE,
-                target_image.size.y as u32 / WORKGROUP_SIZE,
-                1,
+            render_context.command_encoder().copy_texture_to_texture(
+                current_voxel_image.texture.as_image_copy(),
+                prev_voxel_image.texture.as_image_copy(),
+                Extent3d {
+                    width: SIZE,
+                    height: SIZE,
+                    depth_or_array_layers: SIZE,
+                },
             );
         }
 
@@ -289,14 +257,13 @@ struct TracePipeline {
     layout: BindGroupLayout,
     sampler: Sampler,
     pipeline_id: CachedComputePipelineId,
-    blur_pipeline_id: CachedComputePipelineId,
 }
 
 impl FromWorld for TracePipeline {
     fn from_world(world: &mut World) -> Self {
         let shader = world
             .resource::<AssetServer>()
-            .load("shaders/screen_space_passes.wgsl");
+            .load("shaders/voxel_pass.wgsl");
 
         let render_device = world.resource::<RenderDevice>();
 
@@ -308,24 +275,20 @@ impl FromWorld for TracePipeline {
             image_entry(4, TextureViewDimension::D2Array),
             image_entry(8, TextureViewDimension::D2),
             image_entry(9, TextureViewDimension::D2Array),
-            storage_tex_write(
-                10,
-                TextureFormat::Rgba16Float,
-                TextureViewDimension::D2Array,
-            ),
-            image_entry(11, TextureViewDimension::D3),
+            image_entry(10, TextureViewDimension::D3),
+            storage_tex_write(11, TextureFormat::Rgba32Float, TextureViewDimension::D3),
         ];
 
         // Prepass
         entries.extend_from_slice(&prepass_get_bind_group_layout_entries([5, 6, 7], false));
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("ScreenSpacePassesNode_bind_group_layout"),
+            label: Some("voxel_pass_bind_group_layout"),
             entries: &entries,
         });
 
         let sampler = render_device.create_sampler(&SamplerDescriptor {
-            label: Some("ScreenSpacePassesNode_sampler_descriptor"),
+            label: Some("voxel_pass_sampler_descriptor"),
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Linear,
             mipmap_filter: FilterMode::Linear,
@@ -343,51 +306,40 @@ impl FromWorld for TracePipeline {
             entry_point: Cow::from("update"),
         });
 
-        let blur_pipeline_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-            label: None,
-            layout: vec![layout.clone()],
-            push_constant_ranges: Vec::new(),
-            shader,
-            shader_defs: vec![],
-            entry_point: Cow::from("blur"),
-        });
-
         Self {
             layout,
             sampler,
             pipeline_id,
-            blur_pipeline_id,
         }
     }
 }
 
 #[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
-#[uuid = "c4fe681e-4dd8-47e5-8039-e9678ad4d717"]
-pub struct ScreenSpacePassesTargetImage {
-    pub current_img: Handle<Image>,
-    pub processed_img: Handle<Image>,
+#[uuid = "ca92a954-077c-4bf3-8d86-a9417e89825e"]
+pub struct VoxelPassesTargetImage {
+    pub prev: Handle<Image>,
+    pub current: Handle<Image>,
 }
 
-fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResMut<Assets<Image>>) {
-    let window = windows.single();
-
-    let width = window.physical_width();
-    let height = window.physical_height();
-
+fn setup_image(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let size = Extent3d {
-        width,
-        height,
-        depth_or_array_layers: LAYERS,
+        width: SIZE,
+        height: SIZE,
+        depth_or_array_layers: SIZE,
     };
     let img = Image {
-        data: vec![0; get_image_bytes_count(size.width, size.height, 1, 2, 4) * LAYERS as usize],
+        data: vec![
+            0;
+            get_image_bytes_count(size.width, size.height, 1, 4, 4)
+                * size.depth_or_array_layers as usize
+        ],
         texture_descriptor: TextureDescriptor {
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
+            dimension: TextureDimension::D3,
+            format: TextureFormat::Rgba32Float,
             usage: TextureUsages::STORAGE_BINDING
                 | TextureUsages::TEXTURE_BINDING
                 | TextureUsages::COPY_SRC,
-            view_formats: &[TextureFormat::Rgba16Float],
+            view_formats: &[TextureFormat::Rgba32Float],
             label: None,
             size,
             mip_level_count: 1,
@@ -402,44 +354,18 @@ fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResM
         }),
         texture_view_descriptor: Some(TextureViewDescriptor {
             label: None,
-            format: Some(TextureFormat::Rgba16Float),
-            dimension: Some(TextureViewDimension::D2Array),
+            format: Some(TextureFormat::Rgba32Float),
+            dimension: Some(TextureViewDimension::D3),
             base_mip_level: 0,
             mip_level_count: None,
             base_array_layer: 0,
-            array_layer_count: Some(LAYERS),
+            array_layer_count: None,
             aspect: TextureAspect::All,
         }),
     };
-    let img2 = img.clone();
 
-    commands.insert_resource(ScreenSpacePassesTargetImage {
-        current_img: images.add(img),
-        processed_img: images.add(img2),
+    commands.insert_resource(VoxelPassesTargetImage {
+        prev: images.add(img.clone()),
+        current: images.add(img),
     });
-}
-
-impl FrameData for ScreenSpacePassesTargetImage {
-    fn image_h(&self) -> Handle<Image> {
-        self.processed_img.clone()
-    }
-
-    fn size(&self, width: u32, height: u32) -> (u32, u32) {
-        // make sure the size is divisible by work group
-        (width, height)
-    }
-
-    fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>) {
-        let size: (u32, u32) = self.size(width, height);
-        let image = images.get_mut(&self.current_img).unwrap();
-        image.texture_descriptor.size = Extent3d {
-            width: size.0,
-            height: size.1,
-            depth_or_array_layers: LAYERS,
-        };
-        image.data = vec![0; get_image_bytes_count(size.0, size.1, 1, 2, 4) * LAYERS as usize];
-        let img2 = image.clone();
-        let image2 = images.get_mut(&self.processed_img).unwrap();
-        *image2 = img2;
-    }
 }

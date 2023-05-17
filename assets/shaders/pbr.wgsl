@@ -27,6 +27,9 @@ var screen_passes_processed: texture_2d_array<f32>;
 @group(1) @binding(19)
 var screen_passes_processed_samp: sampler;
 
+@group(0) @binding(20)
+var voxel_cache: texture_3d<f32>;
+
 #import bevy_pbr::utils
 #import bevy_pbr::clustered_forward
 #import bevy_pbr::lighting

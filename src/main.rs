@@ -13,6 +13,7 @@ mod pbr_material;
 mod prepass_downsample;
 mod screen_space_passes;
 mod sphere;
+mod voxel_pass;
 
 use bevy::{
     core_pipeline::{core_3d, experimental::taa::TemporalAntiAliasPlugin},
@@ -36,6 +37,7 @@ use pbr_material::{load_blue_noise, swap_standard_material, BlueNoise, CustomSta
 use prepass_downsample::PrepassDownsample;
 use screen_space_passes::ScreenSpacePassesPlugin;
 use sphere::SphereScenePlugin;
+use voxel_pass::VoxelPassPlugin;
 
 fn main() {
     let mut app = App::new();
@@ -64,6 +66,7 @@ fn main() {
         )
         .add_plugin(CopyFramePlugin)
         .add_plugin(PrepassDownsample)
+        .add_plugin(VoxelPassPlugin)
         //.add_plugin(PathTracePlugin)
         .add_plugin(ScreenSpacePassesPlugin)
         .add_plugin(CoordinateTransformationsPlugin)

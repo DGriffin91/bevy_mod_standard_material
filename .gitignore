@@ -14,3 +14,4 @@ Cargo.lock
 /assets/large_models
 *.blend
 *.blend1
+imgui.ini

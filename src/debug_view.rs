@@ -10,14 +10,12 @@ use bevy::{
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-            BindGroupLayoutEntry, BindingResource, BindingType, CachedRenderPipelineId,
-            ColorTargetState, ColorWrites, FilterMode, FragmentState, MultisampleState, Operations,
-            PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
-            RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages,
-            TextureFormat, TextureSampleType, TextureViewDimension,
+            BindingResource, CachedRenderPipelineId, ColorTargetState, ColorWrites, FilterMode,
+            FragmentState, MultisampleState, Operations, PipelineCache, PrimitiveState,
+            RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, Sampler,
+            SamplerDescriptor, TextureFormat, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
-        texture::BevyDefault,
         view::{ExtractedView, ViewTarget, ViewUniformOffset, ViewUniforms},
         RenderApp,
     },
@@ -28,6 +26,7 @@ use crate::{
     copy_frame::CopyFrameData,
     prepass_downsample::{prepass_get_bind_group_layout_entries, PrepassDownsampleImage},
     screen_space_passes::ScreenSpacePassesTargetImage,
+    voxel_pass::VoxelPassesTargetImage,
 };
 
 pub struct DebugViewPlugin;
@@ -124,6 +123,13 @@ impl Node for DebugViewNode {
             return Ok(());
         };
 
+        let Some(voxel_passes_image) = world.get_resource::<VoxelPassesTargetImage>() else {
+            return Ok(());
+        };
+        let Some(current_voxel_image) = images.get(&voxel_passes_image.current) else {
+            return Ok(());
+        };
+
         let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
@@ -188,14 +194,18 @@ impl Node for DebugViewNode {
                     },
                     BindGroupEntry {
                         binding: 8,
-                        resource: BindingResource::TextureView(&depth_binding.default_view),
+                        resource: BindingResource::TextureView(&current_voxel_image.texture_view),
                     },
                     BindGroupEntry {
                         binding: 9,
-                        resource: BindingResource::TextureView(&normal_binding.default_view),
+                        resource: BindingResource::TextureView(&depth_binding.default_view),
                     },
                     BindGroupEntry {
                         binding: 10,
+                        resource: BindingResource::TextureView(&normal_binding.default_view),
+                    },
+                    BindGroupEntry {
+                        binding: 11,
                         resource: BindingResource::TextureView(
                             &motion_vectors_binding.default_view,
                         ),
@@ -240,10 +250,11 @@ impl FromWorld for DebugViewPipeline {
             image_entry(5, TextureViewDimension::D2),
             image_entry(6, TextureViewDimension::D2Array),
             image_entry(7, TextureViewDimension::D2Array),
+            image_entry(8, TextureViewDimension::D3),
         ];
 
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([8, 9, 10], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([9, 10, 11], false));
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("debug_view_bind_group_layout"),

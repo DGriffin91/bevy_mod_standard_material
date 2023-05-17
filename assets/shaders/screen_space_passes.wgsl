@@ -39,6 +39,8 @@ var prepass_downsample: texture_2d<f32>;
 var screen_passes_processed: texture_2d_array<f32>;
 @group(0) @binding(10)
 var screen_passes_target: texture_storage_2d_array<rgba16float, write>;
+@group(0) @binding(11)
+var voxel_cache: texture_3d<f32>;
 
 
 
@@ -50,7 +52,6 @@ var screen_passes_target: texture_storage_2d_array<rgba16float, write>;
 #import "shaders/bad_ssr.wgsl"
 #import "shaders/bad_ssgi.wgsl"
 #import "shaders/ssr_uv_generate.wgsl"
-#define VOXEL_UPDATE_FN
 #import "shaders/voxel_cache.wgsl"
 
 fn new_drm_for_restir() -> DepthRayMarch {
@@ -285,7 +286,7 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
             }
         } else {
             let max_voxel_age = 1000.0;
-            let voxel_hit = march_voxel_grid(probe_pos + direction * 1.0, direction, 64u, 1u, max_voxel_age);
+            let voxel_hit = march_voxel_grid(probe_pos + direction * 1.0, direction, 512u, 1u, max_voxel_age);
             if voxel_hit.t > VOXEL_SIZE * (1.0 + urand.w) {
                 let age = max(globals.time - voxel_hit.age, 1.0);
                 let dist = voxel_hit.t;
@@ -325,12 +326,9 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
     //}
     let w = w_sum / max(0.00001, f32(M) * weight);
 
-    let damp_energy = 1.0; // TODO avoid feedback
-    let resolve_col = min(probe_latest_color * damp_energy, probe_latest_color * falloff * w);
+    let resolve_col = min(probe_latest_color, probe_latest_color * falloff * w);
 
     probe_color = mix(probe_color, resolve_col, hysterisis);
-
-    //probe_color = read_world_cache(world_position).xyz;
 
 
     textureStore(screen_passes_target, ifrag_coord, 0u, vec4(proposed_pos, 0.0));
@@ -338,17 +336,7 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
     textureStore(screen_passes_target, ifrag_coord, 2u, vec4(probe_pos, 0.0));
     textureStore(screen_passes_target, ifrag_coord, 3u, vec4(probe_latest_color, 0.0));
     textureStore(screen_passes_target, ifrag_coord, 4u, vec4(probe_color, 0.0));
-    let last_world_cache = read_world_cache(probe_pos);
-    
-    let cache_color = last_world_cache.xyz;
-    let cache_age = last_world_cache.w;
-    if history_hit_screen {
-        let screen_color = textureSampleLevel(prev_frame_tex, linear_sampler, screen_history_uv, 2.0).rgb;
-        update_world_cache(mix(cache_color, screen_color, 0.1), probe_pos);
-    }
 }
-
-// disable voxels when
 
 
 
