@@ -54,5 +54,5 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
 
     //return frame_col;
     //return vec4(vec3(last_world_cache.rgb), 1.0);
-    return vec4(vec3(col), 1.0); //hit.color * 
+    return vec4(vec3(frame_col.rgb), 1.0); //hit.color * 
 }

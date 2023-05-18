@@ -93,11 +93,19 @@ fn deinterleave3(n: u32) -> vec3<i32> {
 @compute @workgroup_size(8, 8, 1)
 fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     //if true {return;}
-    let in_location = vec3<i32>(i32(invocation_id.x), i32(invocation_id.y), i32(invocation_id.z));
-    let location = deinterleave3(interleave3(in_location));
-    if all(location == in_location) {
-        return;
-    }
+
+    // something something cache locality
+    let looking_at = position_view_to_world(vec3(0.0, 0.0, -1.0));
+    let looking_at_dir = normalize(looking_at - view.world_position.xyz);
+    let invocation_id = select(vec3(u32(VOXEL_GRID_SIZE)) - invocation_id, invocation_id, looking_at_dir < 0.0);
+
+    let location = vec3<i32>(i32(invocation_id.x), i32(invocation_id.y), i32(invocation_id.z));
+
+    //let location = deinterleave3(
+    //    invocation_id.x +
+    //    invocation_id.y * 128u +
+    //    invocation_id.z * 128u * 128u
+    //);
 
 
     let prepass_downsample_dims = vec2<f32>(textureDimensions(prepass_downsample).xy);
@@ -126,7 +134,6 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         var closest_nor_depth = vec4(0.0);
         var closer_than_screen = false;
         var color = vec3(0.0);
-        var color_w = 0.0;
         var closest_coord = vec2(0, 0);
         // check a few depths +/- n distance in view space, take the closest one
         for (var x = -n; x <= n; x += 1) {
@@ -150,9 +157,11 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
                 }
             }
         }
-        if closest < VOXEL_SIZE / 2.0 {
+        if closest < VOXEL_SIZE / 1.0 {
             color = textureLoad(prev_frame_tex, closest_coord, 0).rgb;
-            //color /= color_w;
+            let hysteresis = 0.05;
+            color = mix(prev_voxel.rgb, color.rgb, hysteresis);
+            //textureStore(voxel_cache_next, vec3(location), vec4(a, 0.0, 0.0, f32(globals.time)));
             textureStore(voxel_cache_next, vec3(location), vec4(color.rgb, f32(globals.time)));
         } else if closer_than_screen {
             textureStore(voxel_cache_next, vec3(location), vec4(0.0));

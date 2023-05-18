@@ -5,6 +5,9 @@ Move voxels with view, needs to happen in voxel rate pass or equivalent
 Optimize voxel traversal, we understep currently so we naively hit every voxel
 */
 
+#define USE_VOXEL_FALLBACK
+//#define FILTER_SSGI
+
 @group(0) @binding(4)
 var blue_noise_tex: texture_2d_array<f32>;
 const BLUE_NOISE_TEX_DIMS = vec3<u32>(64u, 64u, 64u);
@@ -66,7 +69,7 @@ fn new_drm_for_restir() -> DepthRayMarch {
     return dmr;
 }
 
-fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position: vec3<f32>, samples: u32) {
+fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position: vec3<f32>, samples: u32) {
     
     let trace_dist = 10.0; //after this distance, we switch to the radiance cache
 
@@ -168,7 +171,8 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
     let surface_normal = normalize(surface_normal);
     let ufrag_coord = vec2<u32>(ifrag_coord.xy);
     // TODO surface_normal * 0.01 is because of lines from using really low mip for depth
-    let ray_start_ndc = position_world_to_ndc(probe_pos);
+    let ray_start_ws = probe_pos;
+    let ray_start_ndc = position_world_to_ndc(ray_start_ws);
 
     let TBN = build_orthonormal_basis(surface_normal);
 
@@ -229,9 +233,11 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
 
     for (var i = 0u; i < samples; i += 1u) {
         let white_frame_noise = white_frame_noise(8492u + i);
+        let white_frame_noise2 = white_frame_noise(1638u + i);
         let seed = i * samples + globals.frame_count * samples;
 
         let urand = fract_blue_noise_for_pixel(ufrag_coord, seed, white_frame_noise);  
+        let urand2 = fract_blue_noise_for_pixel(ufrag_coord, seed, white_frame_noise2);  
 
         var direction = cosine_sample_hemisphere(urand.xy);
 
@@ -285,18 +291,29 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
                 }
             }
         } else {
+            #ifdef USE_VOXEL_FALLBACK
+            let ray_pos_ndc = mix(dmr.ray_start_cs, dmr.ray_end_cs, raymarch_result.hit_t);
+            let ray_end_pos_ws = position_ndc_to_world(ray_pos_ndc);
+            let ray_one_voxel_away = ray_start_ws + direction * VOXEL_SIZE * 1.5;
+            let voxel_ray_start = select(ray_one_voxel_away, ray_end_pos_ws, 
+                                         distance(ray_end_pos_ws, ray_start_ws) > 
+                                         distance(ray_one_voxel_away, ray_start_ws));
+
+            let skip = u32(urand2.x > 0.5);
+
             let max_voxel_age = 1000.0;
-            let voxel_hit = march_voxel_grid(probe_pos + direction * 1.0, direction, 512u, 1u, max_voxel_age);
+            let voxel_hit = march_voxel_grid(voxel_ray_start, direction, 512u, skip, max_voxel_age);
             if voxel_hit.t > VOXEL_SIZE * (1.0 + urand.w) {
                 let age = max(globals.time - voxel_hit.age, 1.0);
                 let dist = voxel_hit.t;
-                let voxel_derate = 0.8 * saturate(1.0 - pow(age, 1.0) / max_voxel_age);
+                let voxel_derate = 1.0 * saturate(1.0 - pow(age, 1.0) / max_voxel_age);
+
                 let color = voxel_hit.color * voxel_derate;
                 let prop_pos = probe_pos + direction * voxel_hit.t;
                 var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
                 let brdf = max(dot(surface_normal, direction), 0.0);
                 var new_weight = gr * (1.0 / (1.0 + dist * dist));
-                new_weight *= brdf * voxel_derate;
+                new_weight *= brdf * voxel_derate * voxel_hit.t;
                 new_weight = max(new_weight, 0.0);
 
                 w_sum += new_weight;
@@ -313,6 +330,7 @@ fn ssgi_store_hits(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_posi
                     probe_latest_color = color;
                 }
             }
+            #endif
         }
         M += 1u;
     }
@@ -376,7 +394,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let world_position = position_ndc_to_world(vec3(uv_to_ndc(screen_uv), depth));
     let F0 = get_f0(0.5, 0.0, vec3(1.0));
 
-    ssgi_store_hits(location, surface_normal, world_position, 1u);
+    ssgi_restir(location, surface_normal, world_position, 1u);
 
     
     
@@ -439,7 +457,7 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     //textureStore(screen_passes_target, location, 1u, vec4(f32(center_M), center_w_sum, center_weight, 0.0));
     //textureStore(screen_passes_target, location, 2u, vec4(center_probe_pos, 0.0));
 
-    
+#ifdef FILTER_SSGI
     let v = textureSampleLevel(screen_passes_processed, linear_sampler, screen_uv, 4, 0.0);
     let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 1.0);
     let world_position = position_ndc_to_world(vec3(uv_to_ndc(screen_uv), v.w));
@@ -475,12 +493,15 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         tot_w += w;
     }
     textureStore(screen_passes_target, location, 4, vec4(tot/tot_w, 1.0));
+#else
+    textureStore(screen_passes_target, location, 4, textureLoad(screen_passes_processed, location, 4, 0));
+#endif //FILTER_SSGI
 
 
     textureStore(screen_passes_target, location, 0, textureLoad(screen_passes_processed, location, 0, 0));
     textureStore(screen_passes_target, location, 1, textureLoad(screen_passes_processed, location, 1, 0));
     textureStore(screen_passes_target, location, 2, textureLoad(screen_passes_processed, location, 2, 0));
     textureStore(screen_passes_target, location, 3, textureLoad(screen_passes_processed, location, 3, 0));
-    //textureStore(screen_passes_target, location, 4, textureLoad(screen_passes_processed, location, 4, 0));
+
     textureStore(screen_passes_target, location, 5, textureLoad(screen_passes_processed, location, 5, 0));
 }

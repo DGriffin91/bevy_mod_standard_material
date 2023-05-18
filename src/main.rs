@@ -12,12 +12,13 @@ mod path_trace;
 mod pbr_material;
 mod prepass_downsample;
 mod screen_space_passes;
+mod slow_frame_diag;
 mod sphere;
 mod voxel_pass;
 
 use bevy::{
     core_pipeline::{core_3d, experimental::taa::TemporalAntiAliasPlugin},
-    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    diagnostic::{Diagnostics, LogDiagnosticsPlugin},
     input::mouse::MouseMotion,
     pbr::DirectionalLightShadowMap,
     prelude::*,
@@ -36,6 +37,7 @@ use path_trace::PathTracePlugin;
 use pbr_material::{load_blue_noise, swap_standard_material, BlueNoise, CustomStandardMaterial};
 use prepass_downsample::PrepassDownsample;
 use screen_space_passes::ScreenSpacePassesPlugin;
+use slow_frame_diag::FrameTimeDiagnosticsPlugin;
 use sphere::SphereScenePlugin;
 use voxel_pass::VoxelPassPlugin;
 

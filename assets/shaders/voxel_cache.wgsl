@@ -1,21 +1,21 @@
 //kitchen
-const VOXEL_GRID_SIZE = vec3<i32>(128, 128, 128);
-const VOXEL_SIZE = 0.2;
+const VOXEL_GRID_SIZE = 128;
+const VOXEL_SIZE = 0.25;
 
 
 
 fn ivoxel_clamp(pos: vec3<i32>) -> vec3<i32> {
-    return clamp(pos, vec3(0), VOXEL_GRID_SIZE);
+    return clamp(pos, vec3(0), vec3(VOXEL_GRID_SIZE));
 }
 
 fn position_world_to_fvoxel(pos: vec3<f32>) -> vec3<f32> {
     let view_pos = vec3<f32>(vec3<i32>(view.world_position.xyz / VOXEL_SIZE)) * VOXEL_SIZE;
-    return (pos - view_pos) / VOXEL_SIZE + f32(VOXEL_GRID_SIZE.x / 2);
+    return (pos - view_pos) / VOXEL_SIZE + f32(VOXEL_GRID_SIZE / 2);
 }
 
 fn position_voxel_to_world(voxel: vec3<i32>) -> vec3<f32> {
     let view_pos = vec3<f32>(vec3<i32>(view.world_position.xyz / VOXEL_SIZE)) * VOXEL_SIZE;
-    return vec3<f32>(voxel - VOXEL_GRID_SIZE.x / 2) * VOXEL_SIZE + view_pos;
+    return vec3<f32>(voxel - VOXEL_GRID_SIZE / 2) * VOXEL_SIZE + view_pos;
 }
 
 struct VoxelHit {
