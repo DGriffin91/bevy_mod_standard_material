@@ -6,7 +6,7 @@ Optimize voxel traversal, we understep currently so we naively hit every voxel
 */
 
 #define USE_VOXEL_FALLBACK
-//#define FILTER_SSGI
+#define FILTER_SSGI
 
 @group(0) @binding(4)
 var blue_noise_tex: texture_2d_array<f32>;
@@ -150,20 +150,24 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
         probe_pos = world_position_offs;
     }
 
+
     //if M > 1024u {
     //    return;
     //}
 
-    //reset sometimes, TODO restir probably doesn't just reset
-    let reset = hash_noise(ifrag_coord, globals.frame_count) * 192.0 + 64.0; 
+    // randomly reset position
+    let reset = hash_noise(ifrag_coord, globals.frame_count);
+    if reset > 0.8 {
+        probe_pos = world_position_offs;
+        probe_reset = true;
+    }
 
-    if f32(M) > reset {
-       proposed_pos = vec3(F32_MAX);
-       M = 0u;
-       w_sum = 0.0;
-       weight = 0.0;
-       probe_pos = world_position_offs;
-       probe_reset = true;
+    // Works better than resetting TODO still probably not what restir does
+    let max_M = 64u;
+    if M > max_M {
+        let ratio = f32(max_M) / f32(M);
+        M = max_M;
+        w_sum = w_sum * ratio;
     }
 
 
@@ -338,7 +342,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
     let dist_to_hit = distance(proposed_pos, world_position_offs);
 
     let falloff = (1.0 / (1.0 + dist_to_hit * dist_to_hit));
-    var hysterisis = 0.2;
+    var hysterisis = 0.5;
     //if probe_reset {
     //    hysterisis = 1.0;
     //}
@@ -464,7 +468,7 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let dist_factor = 1.0;
     var tot = vec3(0.0);
     var tot_w = 0.0;
-    let samples = 10u;
+    let samples = 12u;
     let range = 20.0;
     let white_frame_noise = white_frame_noise(8462u);
     tot += textureLoad(screen_passes_processed, location, 4, 0).xyz;

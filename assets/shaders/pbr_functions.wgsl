@@ -279,11 +279,12 @@ fn pbr(
 
     let backface = max(dot(ray_dir, in.N), 0.0);
 
-    let c = w_sum / max(0.00001, f32(M) * weight);
+    let c_weight = w_sum / max(0.00001, f32(M) * weight);
     // idk why this 2 is here https://github.com/EmbarkStudios/kajiya/blob/main/assets/shaders/rtdgi/restir_resolve.hlsl#LL172C22-L172C22
     let gw = 2.0 * max(dot(in.N, ray_dir), 0.0);
-    let limit_w = min(c * gw, gw); //force conservation TODO probably shouldn't be needed
-    tot += proposed_col;// * gw; //TODO use SH so we can use gw
+    //let limit_w = min(c_weight * gw, gw); //force conservation TODO probably shouldn't be needed
+    // proposed_col has the weight baked in
+    tot += proposed_col; //TODO use SH so we can use gw, can't use this with filtering
     tot_w += 1.0;
 
     indirect_light += max(tot / tot_w, vec3(0.0)) * diffuse_color;
@@ -298,8 +299,8 @@ fn pbr(
 
 
     // BAD SSR
-    //var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 8u, vec2(2.0, 3.0)).rgb;
-    //indirect_light += ssr;
+//    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 8u, vec2(2.0, 3.0)).rgb;
+//    indirect_light += ssr;
 
     //var ssr = bad_ssr_use_voxels(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 1u, vec2(2.0, 3.0)).rgb;
     //indirect_light += ssr;
@@ -316,8 +317,8 @@ fn pbr(
     //    indirect_light += max(ssr.rgb, vec3(0.0)); //TODO handle metal correctly
 //
     //}
-//    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), in.N, in.world_position.xyz, roughness, F0, 1u, vec2(2.0, 3.0)).rgb;
-//    indirect_light += max(ssr.rgb, vec3(0.0)); //TODO handle metal correctly
+    //var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), in.N, in.world_position.xyz, roughness, F0, 12u, vec2(2.0, 3.0)).rgb;
+    //indirect_light += max(ssr.rgb, vec3(0.0)); //TODO handle metal correctly
 
 //    indirect_light += ssr_uv(screen_uv, normalize(in.N), in.world_position.xyz, roughness).xyz;
 
@@ -328,8 +329,8 @@ fn pbr(
 
     //indirect_light += pt_image.rgb * diffuse_color;
 //    
-    //var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
-    //indirect_light *= pow(ssao, vec3(0.5));
+    var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
+    indirect_light *= pow(ssao, vec3(0.5));
 
 
     // Environment map light (indirect)
