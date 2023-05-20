@@ -28,14 +28,13 @@ const MIP_LEVELS: u32 = 6;
 
 use crate::{
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
-    path_trace::PathTraceNode,
     pbr_material::CustomStandardMaterial,
 };
 
 pub struct CopyFramePlugin;
 impl Plugin for CopyFramePlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(setup_image)
+        app.add_systems(Startup, setup_image)
             .add_systems(
                 Update,
                 auto_resize_image::<CustomStandardMaterial, CopyFrameData>,

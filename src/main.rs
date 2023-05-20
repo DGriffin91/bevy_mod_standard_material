@@ -1,8 +1,8 @@
 //! Loads and renders a glTF file as a scene.
 
-mod bind_group_utils;
+pub mod bind_group_utils;
 mod bistro;
-mod camera_controller;
+pub mod camera_controller;
 mod copy_frame;
 mod debug_view;
 mod helmet;
@@ -18,28 +18,20 @@ mod sphere;
 mod voxel_pass;
 
 use bevy::{
-    core_pipeline::{core_3d, experimental::taa::TemporalAntiAliasPlugin},
-    diagnostic::{Diagnostics, LogDiagnosticsPlugin},
-    input::mouse::MouseMotion,
-    pbr::DirectionalLightShadowMap,
-    prelude::*,
-    render::{extract_resource::ExtractResourcePlugin, render_graph::RenderGraphApp, RenderApp},
-    window::PresentMode,
+    core_pipeline::experimental::taa::TemporalAntiAliasPlugin, diagnostic::LogDiagnosticsPlugin,
+    input::mouse::MouseMotion, pbr::DirectionalLightShadowMap, prelude::*,
+    render::extract_resource::ExtractResourcePlugin, window::PresentMode,
 };
 use bevy_coordinate_systems::CoordinateTransformationsPlugin;
 use bevy_mod_bvh::{DynamicTLAS, StaticTLAS};
-use bistro::BistroPlugin;
+
 use copy_frame::CopyFramePlugin;
 use debug_view::DebugViewPlugin;
-use helmet::HelmetScenePlugin;
 use kitchen::KitchenPlugin;
-use load_sponza::SponzaPlugin;
-use path_trace::PathTracePlugin;
 use pbr_material::{load_blue_noise, swap_standard_material, BlueNoise, CustomStandardMaterial};
 use prepass_downsample::PrepassDownsample;
 use screen_space_passes::ScreenSpacePassesPlugin;
 use slow_frame_diag::FrameTimeDiagnosticsPlugin;
-use sphere::SphereScenePlugin;
 use voxel_pass::VoxelPassPlugin;
 
 fn main() {
@@ -76,12 +68,12 @@ fn main() {
         .add_plugin(DebugViewPlugin)
         .add_plugin(ExtractResourcePlugin::<BlueNoise>::default())
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
-        .add_system(swap_standard_material)
+        .add_systems(Update, swap_standard_material)
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(TemporalAntiAliasPlugin)
-        .add_startup_system(load_blue_noise)
-        .add_startup_system(no_empty_tlas)
+        .add_systems(Startup, load_blue_noise)
+        .add_systems(Startup, no_empty_tlas)
         .add_systems(Update, move_directional_light);
 
     app.run();

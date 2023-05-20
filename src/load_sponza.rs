@@ -6,11 +6,8 @@ use crate::{
 };
 use bevy::{
     core_pipeline::{
-        bloom::BloomSettings,
-        experimental::taa::TemporalAntiAliasBundle,
-        fxaa::Fxaa,
-        prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass},
-        tonemapping::Tonemapping,
+        bloom::BloomSettings, experimental::taa::TemporalAntiAliasBundle, fxaa::Fxaa,
+        prepass::NormalPrepass, tonemapping::Tonemapping,
     },
     pbr::CascadeShadowConfigBuilder,
     prelude::*,
@@ -26,8 +23,8 @@ impl Plugin for SponzaPlugin {
                 brightness: 0.0,
             })
             .add_plugin(CameraControllerPlugin)
-            .add_startup_system(setup)
-            .add_system(proc_scene);
+            .add_systems(Startup, setup)
+            .add_systems(Update, proc_scene);
     }
 }
 

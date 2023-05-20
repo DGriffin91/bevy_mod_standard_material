@@ -4,15 +4,11 @@ use crate::{
 };
 use bevy::{
     core_pipeline::{
-        bloom::BloomSettings,
-        experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasSettings},
-        fxaa::Fxaa,
-        prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass},
+        bloom::BloomSettings, experimental::taa::TemporalAntiAliasBundle, prepass::NormalPrepass,
         tonemapping::Tonemapping,
     },
-    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    pbr::DirectionalLightShadowMap,
     prelude::*,
-    render::camera::TemporalJitter,
 };
 
 pub struct BistroPlugin;
@@ -26,8 +22,8 @@ impl Plugin for BistroPlugin {
                 brightness: 0.0,
             })
             .add_plugin(CameraControllerPlugin)
-            .add_startup_system(setup)
-            .add_system(fix_sky_brightness);
+            .add_systems(Startup, setup)
+            .add_systems(Update, fix_sky_brightness);
     }
 }
 

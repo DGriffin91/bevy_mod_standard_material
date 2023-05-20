@@ -16,7 +16,7 @@ impl Plugin for HelmetScenePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(CameraControllerPlugin)
             //.add_system(animate_light_direction)
-            .add_startup_system(setup);
+            .add_systems(Startup, setup);
     }
 }
 
@@ -78,6 +78,7 @@ fn setup(
     });
 }
 
+#[allow(dead_code)]
 fn animate_light_direction(
     time: Res<Time>,
     mut query: Query<&mut Transform, With<DirectionalLight>>,

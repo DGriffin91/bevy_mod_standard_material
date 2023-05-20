@@ -15,7 +15,6 @@ use crate::{
     pbr_material::{BlueNoise, CustomStandardMaterial},
     prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
     resource,
-    screen_space_passes::ScreenSpacePassesNode,
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
@@ -28,19 +27,18 @@ use bevy::{
             ComponentUniforms, ExtractComponent, ExtractComponentPlugin, UniformComponentPlugin,
         },
         extract_resource::{ExtractResource, ExtractResourcePlugin},
-        globals::GlobalsBuffer,
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-            BindingResource, CachedComputePipelineId, CommandEncoderDescriptor,
-            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache,
-            Sampler, SamplerDescriptor, ShaderType, StorageBuffer, TextureDescriptor,
-            TextureDimension, TextureFormat, TextureUsages, TextureViewDimension,
+            BindingResource, CachedComputePipelineId, ComputePassDescriptor,
+            ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache, Sampler,
+            SamplerDescriptor, ShaderType, StorageBuffer, TextureDescriptor, TextureDimension,
+            TextureFormat, TextureUsages, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice, RenderQueue},
         texture::ImageSampler,
-        view::{ExtractedView, ViewTarget, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewTarget, ViewUniformOffset},
         Extract, RenderApp,
     },
 };
@@ -159,9 +157,6 @@ impl Node for PathTraceNode {
         };
 
         let settings_uniforms = world.resource::<ComponentUniforms<TraceSettings>>();
-        let Some(settings_binding) = settings_uniforms.uniforms().binding() else {
-            return Ok(());
-        };
 
         let Some(gpu_buffer_bind_group_entries) = gpu_buffers
                 .bind_group_entries([5, 6, 7, 8, 9, 10, 11]) else {

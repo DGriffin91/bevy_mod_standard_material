@@ -32,7 +32,7 @@ impl FrameTimeDiagnosticsPlugin {
     pub fn diagnostic_system(
         mut diagnostics: ResMut<Diagnostics>,
         time: Res<Time>,
-        frame_count: Res<FrameCount>,
+        _frame_count: Res<FrameCount>,
     ) {
         let delta_seconds = time.raw_delta_seconds_f64();
         if delta_seconds == 0.0 {

@@ -10,7 +10,7 @@ use crate::{
     get_tex_view_entry, image,
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
     pbr_material::{BlueNoise, CustomStandardMaterial},
-    prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
+    prepass_downsample::PrepassDownsampleImage,
     resource,
     voxel_pass::{VoxelPassNode, VoxelPassesTargetImage},
 };
@@ -20,7 +20,6 @@ use bevy::{
     reflect::TypeUuid,
     render::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
-        globals::GlobalsBuffer,
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
@@ -32,7 +31,7 @@ use bevy::{
         },
         renderer::{RenderContext, RenderDevice},
         texture::ImageSampler,
-        view::{ExtractedView, ViewTarget, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewTarget, ViewUniformOffset},
         RenderApp,
     },
 };

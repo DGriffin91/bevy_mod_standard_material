@@ -1,22 +1,16 @@
 use bevy::{
-    core_pipeline::{
-        core_3d, fullscreen_vertex_shader::fullscreen_shader_vertex_state,
-        prepass::ViewPrepassTextures,
-    },
+    core_pipeline::{core_3d, prepass::ViewPrepassTextures},
     prelude::*,
     render::{
-        globals::GlobalsBuffer,
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-            BindingResource, CachedRenderPipelineId, ColorTargetState, ColorWrites, FilterMode,
-            FragmentState, MultisampleState, Operations, PipelineCache, PrimitiveState,
-            RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, Sampler,
-            SamplerDescriptor, TextureFormat, TextureViewDimension,
+            BindingResource, CachedRenderPipelineId, Operations, PipelineCache,
+            RenderPassColorAttachment, RenderPassDescriptor, Sampler, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
-        view::{ExtractedView, ViewTarget, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewTarget, ViewUniformOffset},
         RenderApp,
     },
 };

@@ -1,5 +1,3 @@
-use std::f32::consts::PI;
-
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
     path_trace::TraceSettings,
@@ -8,15 +6,12 @@ use crate::{
 use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
-        experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasSettings},
         fxaa::Fxaa,
         prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
-    input::mouse::MouseMotion,
-    pbr::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    pbr::{CascadeShadowConfig, DirectionalLightShadowMap},
     prelude::*,
-    render::camera::TemporalJitter,
 };
 
 pub struct KitchenPlugin;
@@ -30,8 +25,8 @@ impl Plugin for KitchenPlugin {
                 brightness: 0.0,
             })
             .add_plugin(CameraControllerPlugin)
-            .add_startup_system(setup)
-            .add_system(fix_sky_brightness);
+            .add_systems(Startup, setup)
+            .add_systems(Update, fix_sky_brightness);
     }
 }
 

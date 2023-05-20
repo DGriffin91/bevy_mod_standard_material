@@ -191,10 +191,10 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 
     let last_image = vec3(textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb);
 
-    let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0.0).rgb);
-    return vec4(mix(last_image, pt_image, 1.0), output_color.a);
+    //let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0.0).rgb);
+    //return vec4(mix(last_image, pt_image, 1.0), output_color.a);
 
-    //return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
+    return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
 
 
     //var screen_passes_processed_image = vec3(textureSampleLevel(screen_passes_processed, prev_frame_sampler, screen_uv, 0.0).rgb);

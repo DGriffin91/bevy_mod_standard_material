@@ -10,7 +10,7 @@ pub struct SphereScenePlugin;
 impl Plugin for SphereScenePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(CameraControllerPlugin)
-            .add_startup_system(setup);
+            .add_systems(Startup, setup);
     }
 }
 

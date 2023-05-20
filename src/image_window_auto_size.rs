@@ -1,7 +1,4 @@
-use bevy::{
-    asset::Asset, math::vec2, prelude::*, reflect::TypeUuid, render::render_resource::Extent3d,
-    utils::Uuid,
-};
+use bevy::{asset::Asset, prelude::*, reflect::TypeUuid, utils::Uuid};
 
 ///For automatically resizing an image relative to the viewport size
 

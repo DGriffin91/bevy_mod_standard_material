@@ -20,7 +20,6 @@ use bevy::{
     reflect::TypeUuid,
     render::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
-        globals::GlobalsBuffer,
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
@@ -32,7 +31,7 @@ use bevy::{
         },
         renderer::{RenderContext, RenderDevice},
         texture::ImageSampler,
-        view::{ExtractedView, ViewTarget, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewTarget, ViewUniformOffset},
         RenderApp,
     },
 };

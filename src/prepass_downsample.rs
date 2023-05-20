@@ -38,7 +38,7 @@ use crate::{
 pub struct PrepassDownsample;
 impl Plugin for PrepassDownsample {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(setup_image)
+        app.add_systems(Startup, setup_image)
             .add_systems(
                 Update,
                 auto_resize_image::<CustomStandardMaterial, PrepassDownsampleImage>,
