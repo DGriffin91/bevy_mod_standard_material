@@ -70,7 +70,7 @@ fn main() {
         .add_plugin(CopyFramePlugin)
         .add_plugin(PrepassDownsample)
         .add_plugin(VoxelPassPlugin)
-        .add_plugin(PathTracePlugin)
+        //.add_plugin(PathTracePlugin)
         .add_plugin(ScreenSpacePassesPlugin)
         .add_plugin(CoordinateTransformationsPlugin)
         .add_plugin(DebugViewPlugin)

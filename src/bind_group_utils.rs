@@ -5,16 +5,16 @@ use bevy::core_pipeline::fullscreen_vertex_shader::fullscreen_shader_vertex_stat
 use bevy::pbr::{MAX_CASCADES_PER_LIGHT, MAX_DIRECTIONAL_LIGHTS};
 use bevy::prelude::*;
 
-use bevy::render::globals::GlobalsUniform;
+use bevy::render::globals::{GlobalsBuffer, GlobalsUniform};
 use bevy::render::render_resource::{
-    BindGroupLayout, BindGroupLayoutEntry, BindingType, BufferBindingType, CachedRenderPipelineId,
-    ColorTargetState, ColorWrites, FilterMode, FragmentState, MultisampleState, PipelineCache,
-    PrimitiveState, RenderPipelineDescriptor, SamplerBindingType, SamplerDescriptor, ShaderDefVal,
-    ShaderStages, ShaderType, StorageTextureAccess, TextureFormat, TextureSampleType,
-    TextureViewDimension,
+    BindGroupEntry, BindGroupLayout, BindGroupLayoutEntry, BindingResource, BindingType,
+    BufferBindingType, CachedRenderPipelineId, ColorTargetState, ColorWrites, FilterMode,
+    FragmentState, MultisampleState, PipelineCache, PrimitiveState, RenderPipelineDescriptor,
+    Sampler, SamplerBindingType, SamplerDescriptor, ShaderDefVal, ShaderStages, ShaderType,
+    StorageTextureAccess, TextureFormat, TextureSampleType, TextureView, TextureViewDimension,
 };
 use bevy::render::texture::BevyDefault;
-use bevy::render::view::ViewUniform;
+use bevy::render::view::{ViewUniform, ViewUniforms};
 
 #[macro_export]
 macro_rules! get_entries {
@@ -63,7 +63,7 @@ macro_rules! image {
 }
 
 #[macro_export]
-macro_rules! retrieve_tex_view_entry {
+macro_rules! get_tex_view_entry {
     ($binding:expr, $images:expr, $image_handle:expr) => {
         if let Some(image) = $images.get(&$image_handle) {
             BindGroupEntry {
@@ -76,14 +76,11 @@ macro_rules! retrieve_tex_view_entry {
     };
 }
 
-#[macro_export]
-macro_rules! tex_view_entry {
-    ($binding:expr, $texture_view:expr) => {
-        BindGroupEntry {
-            binding: $binding,
-            resource: BindingResource::TextureView($texture_view),
-        }
-    };
+pub fn tex_view_entry(binding: u32, texture_view: &TextureView) -> BindGroupEntry {
+    BindGroupEntry {
+        binding,
+        resource: BindingResource::TextureView(texture_view),
+    }
 }
 
 #[macro_export]
@@ -97,16 +94,7 @@ macro_rules! gpuimage {
     };
 }
 
-#[macro_export]
-macro_rules! texture_func {
-    ($func_contents:tt) => {
-        EntryResource::TextureFunc(Box::new(|world: &World, images: &RenderAssets<Image>| {
-            $func_contents(world, images)
-        }))
-    };
-}
-
-pub fn sampler_entry(binding: u32) -> BindGroupLayoutEntry {
+pub fn sampler_layout_entry(binding: u32) -> BindGroupLayoutEntry {
     BindGroupLayoutEntry {
         binding,
         visibility: ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
@@ -115,7 +103,7 @@ pub fn sampler_entry(binding: u32) -> BindGroupLayoutEntry {
     }
 }
 
-pub fn image_entry(binding: u32, dim: TextureViewDimension) -> BindGroupLayoutEntry {
+pub fn image_layout_entry(binding: u32, dim: TextureViewDimension) -> BindGroupLayoutEntry {
     BindGroupLayoutEntry {
         binding,
         visibility: ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
@@ -128,7 +116,7 @@ pub fn image_entry(binding: u32, dim: TextureViewDimension) -> BindGroupLayoutEn
     }
 }
 
-pub fn storage_tex_read(
+pub fn storage_tex_read_layout_entry(
     binding: u32,
     format: TextureFormat,
     dim: TextureViewDimension,
@@ -145,7 +133,7 @@ pub fn storage_tex_read(
     }
 }
 
-pub fn storage_tex_write(
+pub fn storage_tex_write_layout_entry(
     binding: u32,
     format: TextureFormat,
     dim: TextureViewDimension,
@@ -162,7 +150,7 @@ pub fn storage_tex_write(
     }
 }
 
-pub fn storage_tex_readwrite(
+pub fn storage_tex_readwrite_layout_entry(
     binding: u32,
     format: TextureFormat,
     dim: TextureViewDimension,
@@ -179,7 +167,7 @@ pub fn storage_tex_readwrite(
     }
 }
 
-pub fn view_entry(binding: u32) -> BindGroupLayoutEntry {
+pub fn view_layout_entry(binding: u32) -> BindGroupLayoutEntry {
     BindGroupLayoutEntry {
         binding,
         visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
@@ -192,7 +180,7 @@ pub fn view_entry(binding: u32) -> BindGroupLayoutEntry {
     }
 }
 
-pub fn globals_entry(binding: u32) -> BindGroupLayoutEntry {
+pub fn globals_layout_entry(binding: u32) -> BindGroupLayoutEntry {
     BindGroupLayoutEntry {
         binding,
         visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
@@ -205,7 +193,10 @@ pub fn globals_entry(binding: u32) -> BindGroupLayoutEntry {
     }
 }
 
-pub fn uniform_entry(binding: u32, min_binding_size: Option<NonZeroU64>) -> BindGroupLayoutEntry {
+pub fn uniform_layout_entry(
+    binding: u32,
+    min_binding_size: Option<NonZeroU64>,
+) -> BindGroupLayoutEntry {
     BindGroupLayoutEntry {
         binding,
         visibility: ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
@@ -257,14 +248,6 @@ pub fn default_full_screen_tri_pipeline_desc(
         multisample: MultisampleState::default(),
         push_constant_ranges: vec![],
     })
-}
-
-#[macro_export]
-macro_rules! some_binding_or_return_none {
-    ($buffer:expr) => {{
-        let Some(r) = $buffer.binding() else {return None};
-        r
-    }};
 }
 
 #[macro_export]
@@ -339,4 +322,40 @@ pub fn prepass_get_bind_group_layout_entries(
             count: None,
         },
     ]
+}
+
+pub fn view_binding_entry(binding: u32, world: &World) -> BindGroupEntry {
+    let view_uniforms = world.resource::<ViewUniforms>();
+    let view_uniforms = view_uniforms.uniforms.binding().unwrap();
+    BindGroupEntry {
+        binding,
+        resource: view_uniforms.clone(),
+    }
+}
+
+pub fn globals_binding_entry(binding: u32, world: &World) -> BindGroupEntry {
+    let globals_buffer = world.resource::<GlobalsBuffer>();
+    let globals_binding = globals_buffer.buffer.binding().unwrap();
+    BindGroupEntry {
+        binding,
+        resource: globals_binding.clone(),
+    }
+}
+
+pub fn sampler_binding_entry(binding: u32, sampler: &Sampler) -> BindGroupEntry {
+    BindGroupEntry {
+        binding,
+        resource: BindingResource::Sampler(&sampler),
+    }
+}
+
+#[macro_export]
+macro_rules! binding_entry {
+    ($binding:expr, $buffer:expr) => {{
+        let Some(resource) = $buffer.binding() else {return Ok(());};
+        BindGroupEntry {
+            binding: $binding,
+            resource,
+        }
+    }};
 }

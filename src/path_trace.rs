@@ -3,13 +3,18 @@ use std::borrow::Cow;
 use crate::{
     bind_group_layout_entry,
     bind_group_utils::{
-        globals_entry, image_entry, prepass_get_bind_group_layout_entries, sampler_entry,
-        storage_tex_write, uniform_entry, view_entry,
+        globals_binding_entry, globals_layout_entry, image_layout_entry,
+        prepass_get_bind_group_layout_entries, sampler_binding_entry, sampler_layout_entry,
+        storage_tex_write_layout_entry, tex_view_entry, uniform_layout_entry, view_binding_entry,
+        view_layout_entry,
     },
+    binding_entry,
     copy_frame::CopyFrameData,
+    get_tex_view_entry, image,
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
     pbr_material::{BlueNoise, CustomStandardMaterial},
     prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
+    resource,
     screen_space_passes::ScreenSpacePassesNode,
 };
 use bevy::{
@@ -59,13 +64,13 @@ impl Plugin for PathTracePlugin {
             )
             .add_systems(
                 Update,
-                auto_resize_image::<CustomStandardMaterial, PathTraceTargetImage>,
+                auto_resize_image::<CustomStandardMaterial, PathTraceImage>,
             )
             .add_plugin(BVHPlugin)
             .add_plugin(GPUDataPlugin)
             .add_plugin(ExtractComponentPlugin::<TraceSettings>::default())
             .add_plugin(UniformComponentPlugin::<TraceSettings>::default())
-            .add_plugin(ExtractResourcePlugin::<PathTraceTargetImage>::default());
+            .add_plugin(ExtractResourcePlugin::<PathTraceImage>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -129,42 +134,9 @@ impl Node for PathTraceNode {
         world: &World,
     ) -> Result<(), NodeRunError> {
         let view_entity = graph_context.view_entity();
-        let view_uniforms: &ViewUniforms = world.resource::<ViewUniforms>();
-        let view_uniforms = view_uniforms.uniforms.binding().unwrap();
-        let globals_buffer = world.resource::<GlobalsBuffer>();
-        let globals_binding = globals_buffer.buffer.binding().unwrap();
         let gpu_buffers = world.resource::<GPUBuffers>();
         let gpu_mat_buffers = world.resource::<GpuMatBuffers>();
         let images = world.resource::<RenderAssets<Image>>();
-
-        let Some(prepass_downsample) = world.get_resource::<PrepassDownsampleImage>() else {
-            return Ok(());
-        };
-        let Some(prepass_downsample_tex) = images.get(&prepass_downsample.0) else {
-            return Ok(());
-        };
-
-        let Some(pathtrace_target) = world.get_resource::<PathTraceTargetImage>() else {
-            return Ok(());
-        };
-        let Some(target_image) = images.get(&pathtrace_target.current_img) else {
-            return Ok(());
-        };
-        let Some(processed_image) = images.get(&pathtrace_target.processed_img) else {
-            return Ok(());
-        };
-
-        let Some(copy_frame_data) = world.get_resource::<CopyFrameData>() else {
-            return Ok(());
-        };
-        let Some(prev_frame) = images.get(&copy_frame_data.image) else {
-            return Ok(());
-        };
-
-        let blue_noise = world.resource::<BlueNoise>();
-        let Some(blue_noise) = images.get(&blue_noise.0) else {
-            return Ok(());
-        };
 
         let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
@@ -196,80 +168,28 @@ impl Node for PathTraceNode {
             return Ok(());
         };
 
-        let Some(static_material_instance_binding) =
-            gpu_mat_buffers.static_material_instance_buffer.binding() else
-        {
-            return Ok(());
-        };
-
-        let Some(dynamic_material_instance_binding) =
-            gpu_mat_buffers.dynamic_material_instance_buffer.binding() else
-        {
-            return Ok(());
-        };
-
         let depth_binding = prepass_textures.depth.as_ref().unwrap();
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
+        let target_image = image!(images, &resource!(world, PathTraceImage).current_img);
+
         let mut entries = vec![
             // at the start so they are easy to swap for the blur
-            BindGroupEntry {
-                binding: 18,
-                resource: BindingResource::TextureView(&processed_image.texture_view),
-            },
-            BindGroupEntry {
-                binding: 19,
-                resource: BindingResource::TextureView(&target_image.texture_view),
-            },
-            BindGroupEntry {
-                binding: 0,
-                resource: view_uniforms.clone(),
-            },
-            BindGroupEntry {
-                binding: 1,
-                resource: globals_binding.clone(),
-            },
-            BindGroupEntry {
-                binding: 2,
-                resource: BindingResource::TextureView(&prev_frame.texture_view),
-            },
-            BindGroupEntry {
-                binding: 3,
-                resource: BindingResource::Sampler(&path_trace_pipeline.sampler),
-            },
-            BindGroupEntry {
-                binding: 4,
-                resource: settings_binding.clone(),
-            },
-            BindGroupEntry {
-                binding: 12,
-                resource: BindingResource::TextureView(&blue_noise.texture_view),
-            },
-            BindGroupEntry {
-                binding: 13,
-                resource: static_material_instance_binding,
-            },
-            BindGroupEntry {
-                binding: 14,
-                resource: dynamic_material_instance_binding,
-            },
-            BindGroupEntry {
-                binding: 15,
-                resource: BindingResource::TextureView(&depth_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 16,
-                resource: BindingResource::TextureView(&normal_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 17,
-                resource: BindingResource::TextureView(&motion_vectors_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 20,
-                resource: BindingResource::TextureView(&prepass_downsample_tex.texture_view),
-            },
+            get_tex_view_entry!(18, images, resource!(world, PathTraceImage).processed_img),
+            tex_view_entry(19, &target_image.texture_view),
+            view_binding_entry(0, world),
+            globals_binding_entry(1, world),
+            get_tex_view_entry!(2, images, resource!(world, CopyFrameData).image),
+            sampler_binding_entry(3, &path_trace_pipeline.sampler),
+            binding_entry!(4, settings_uniforms.uniforms()),
+            get_tex_view_entry!(12, images, resource!(world, BlueNoise).0),
+            binding_entry!(13, gpu_mat_buffers.static_material_instance_buffer),
+            binding_entry!(14, gpu_mat_buffers.dynamic_material_instance_buffer),
+            tex_view_entry(15, &depth_binding.default_view),
+            tex_view_entry(16, &normal_binding.default_view),
+            tex_view_entry(17, &motion_vectors_binding.default_view),
+            get_tex_view_entry!(20, images, resource!(world, PrepassDownsampleImage).0),
         ];
 
         entries.extend(gpu_buffer_bind_group_entries);
@@ -347,17 +267,21 @@ impl FromWorld for TracePipeline {
         let render_device = world.resource::<RenderDevice>();
 
         let mut entries = vec![
-            view_entry(0),
-            globals_entry(1),
-            image_entry(2, TextureViewDimension::D2),
-            sampler_entry(3),
-            uniform_entry(4, Some(TraceSettings::min_size())),
-            image_entry(12, TextureViewDimension::D2Array),
+            view_layout_entry(0),
+            globals_layout_entry(1),
+            image_layout_entry(2, TextureViewDimension::D2),
+            sampler_layout_entry(3),
+            uniform_layout_entry(4, Some(TraceSettings::min_size())),
+            image_layout_entry(12, TextureViewDimension::D2Array),
             MaterialData::bind_group_layout_entry(13),
             MaterialData::bind_group_layout_entry(14),
-            image_entry(18, TextureViewDimension::D2),
-            storage_tex_write(19, TextureFormat::Rgba16Float, TextureViewDimension::D2),
-            image_entry(20, TextureViewDimension::D2),
+            image_layout_entry(18, TextureViewDimension::D2),
+            storage_tex_write_layout_entry(
+                19,
+                TextureFormat::Rgba16Float,
+                TextureViewDimension::D2,
+            ),
+            image_layout_entry(20, TextureViewDimension::D2),
         ];
 
         entries.append(&mut GPUBuffers::bind_group_layout_entry([5, 6, 7, 8, 9, 10, 11]).to_vec());
@@ -508,7 +432,7 @@ fn collect_mats(
 
 #[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
 #[uuid = "c235dff3-905c-4e88-9e0e-fb1c76de1322"]
-pub struct PathTraceTargetImage {
+pub struct PathTraceImage {
     pub current_img: Handle<Image>,
     pub processed_img: Handle<Image>,
 }
@@ -545,13 +469,13 @@ fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResM
     };
     let img2 = img.clone();
 
-    commands.insert_resource(PathTraceTargetImage {
+    commands.insert_resource(PathTraceImage {
         current_img: images.add(img),
         processed_img: images.add(img2),
     });
 }
 
-impl FrameData for PathTraceTargetImage {
+impl FrameData for PathTraceImage {
     fn image_h(&self) -> Handle<Image> {
         self.processed_img.clone()
     }

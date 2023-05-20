@@ -26,11 +26,13 @@ const WORKGROUP_SIZE: u32 = 8;
 const MIP_LEVELS: u32 = 4;
 
 use crate::{
-    bind_group_utils::{prepass_get_bind_group_layout_entries, storage_tex_readwrite},
+    bind_group_utils::{
+        prepass_get_bind_group_layout_entries, storage_tex_readwrite_layout_entry, tex_view_entry,
+    },
     image,
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
     pbr_material::CustomStandardMaterial,
-    resource, tex_view_entry,
+    resource,
 };
 
 pub struct PrepassDownsample;
@@ -124,9 +126,9 @@ impl Node for PrepassDownsampleNode {
         let target_image = image!(images, &resource!(world, PrepassDownsampleImage).0);
 
         let mut entries = vec![
-            tex_view_entry!(0, &depth_binding.default_view),
-            tex_view_entry!(1, &normal_binding.default_view),
-            tex_view_entry!(2, &motion_vectors_binding.default_view),
+            tex_view_entry(0, &depth_binding.default_view),
+            tex_view_entry(1, &normal_binding.default_view),
+            tex_view_entry(2, &motion_vectors_binding.default_view),
         ];
 
         let mut views = Vec::new();
@@ -191,7 +193,7 @@ impl FromWorld for PrepassDownsamplePipeline {
         entries.extend_from_slice(&prepass_get_bind_group_layout_entries([0, 1, 2], false));
 
         for i in 0..MIP_LEVELS {
-            entries.push(storage_tex_readwrite(
+            entries.push(storage_tex_readwrite_layout_entry(
                 3 + i,
                 TextureFormat::Rgba32Float,
                 TextureViewDimension::D2,

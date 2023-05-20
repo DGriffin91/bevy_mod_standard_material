@@ -23,14 +23,16 @@ use bevy::{
 
 use crate::{
     bind_group_utils::{
-        default_full_screen_tri_pipeline_desc, globals_entry, image_entry, linear_sampler,
-        prepass_get_bind_group_layout_entries, sampler_entry, view_entry,
+        default_full_screen_tri_pipeline_desc, globals_binding_entry, globals_layout_entry,
+        image_layout_entry, linear_sampler, prepass_get_bind_group_layout_entries,
+        sampler_binding_entry, sampler_layout_entry, tex_view_entry, view_binding_entry,
+        view_layout_entry,
     },
     copy_frame::CopyFrameData,
+    get_tex_view_entry,
     prepass_downsample::PrepassDownsampleImage,
-    resource, retrieve_tex_view_entry,
+    resource,
     screen_space_passes::ScreenSpacePasses,
-    tex_view_entry,
     voxel_pass::VoxelPassesTargetImage,
 };
 
@@ -98,10 +100,6 @@ impl Node for DebugViewNode {
         world: &World,
     ) -> Result<(), NodeRunError> {
         let view_entity = graph_context.view_entity();
-        let view_uniforms: &ViewUniforms = world.resource::<ViewUniforms>();
-        let view_uniforms = view_uniforms.uniforms.binding().unwrap();
-        let globals_buffer = world.resource::<GlobalsBuffer>();
-        let globals_binding = globals_buffer.buffer.binding().unwrap();
         let images = world.resource::<RenderAssets<Image>>();
 
         let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
@@ -123,27 +121,18 @@ impl Node for DebugViewNode {
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
         let entries = vec![
-            BindGroupEntry {
-                binding: 0,
-                resource: view_uniforms.clone(),
-            },
-            BindGroupEntry {
-                binding: 1,
-                resource: globals_binding.clone(),
-            },
-            BindGroupEntry {
-                binding: 2,
-                resource: BindingResource::Sampler(&debug_view_pipeline.sampler),
-            },
-            retrieve_tex_view_entry!(3, images, resource!(world, PrepassDownsampleImage).0),
-            tex_view_entry!(4, &post_process.source),
-            retrieve_tex_view_entry!(5, images, resource!(world, CopyFrameData).image),
-            retrieve_tex_view_entry!(6, images, resource!(world, ScreenSpacePasses).current_img),
-            retrieve_tex_view_entry!(7, images, resource!(world, ScreenSpacePasses).processed_img),
-            retrieve_tex_view_entry!(8, images, resource!(world, VoxelPassesTargetImage).current),
-            tex_view_entry!(9, &depth_binding.default_view),
-            tex_view_entry!(10, &normal_binding.default_view),
-            tex_view_entry!(11, &motion_vectors_binding.default_view),
+            view_binding_entry(0, world),
+            globals_binding_entry(1, world),
+            sampler_binding_entry(2, &debug_view_pipeline.sampler),
+            get_tex_view_entry!(3, images, resource!(world, PrepassDownsampleImage).0),
+            tex_view_entry(4, &post_process.source),
+            get_tex_view_entry!(5, images, resource!(world, CopyFrameData).image),
+            get_tex_view_entry!(6, images, resource!(world, ScreenSpacePasses).current_img),
+            get_tex_view_entry!(7, images, resource!(world, ScreenSpacePasses).processed_img),
+            get_tex_view_entry!(8, images, resource!(world, VoxelPassesTargetImage).current),
+            tex_view_entry(9, &depth_binding.default_view),
+            tex_view_entry(10, &normal_binding.default_view),
+            tex_view_entry(11, &motion_vectors_binding.default_view),
         ];
 
         let bind_group = render_context
@@ -183,15 +172,15 @@ impl FromWorld for DebugViewPipeline {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
         let mut entries = vec![
-            view_entry(0),
-            globals_entry(1),
-            sampler_entry(2),
-            image_entry(3, TextureViewDimension::D2),
-            image_entry(4, TextureViewDimension::D2),
-            image_entry(5, TextureViewDimension::D2),
-            image_entry(6, TextureViewDimension::D2Array),
-            image_entry(7, TextureViewDimension::D2Array),
-            image_entry(8, TextureViewDimension::D3),
+            view_layout_entry(0),
+            globals_layout_entry(1),
+            sampler_layout_entry(2),
+            image_layout_entry(3, TextureViewDimension::D2),
+            image_layout_entry(4, TextureViewDimension::D2),
+            image_layout_entry(5, TextureViewDimension::D2),
+            image_layout_entry(6, TextureViewDimension::D2Array),
+            image_layout_entry(7, TextureViewDimension::D2Array),
+            image_layout_entry(8, TextureViewDimension::D3),
         ];
 
         // Prepass
