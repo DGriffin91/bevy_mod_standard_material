@@ -20,12 +20,17 @@ use bevy::{
         RenderApp,
     },
 };
-use bevy_mod_bvh::pipeline_utils::{globals_entry, image_entry, sampler_entry, view_entry};
 
 use crate::{
+    bind_group_utils::{
+        default_full_screen_tri_pipeline_desc, globals_entry, image_entry, linear_sampler,
+        prepass_get_bind_group_layout_entries, sampler_entry, view_entry,
+    },
     copy_frame::CopyFrameData,
-    prepass_downsample::{prepass_get_bind_group_layout_entries, PrepassDownsampleImage},
-    screen_space_passes::ScreenSpacePassesTargetImage,
+    prepass_downsample::PrepassDownsampleImage,
+    resource, retrieve_tex_view_entry,
+    screen_space_passes::ScreenSpacePasses,
+    tex_view_entry,
     voxel_pass::VoxelPassesTargetImage,
 };
 
@@ -99,37 +104,6 @@ impl Node for DebugViewNode {
         let globals_binding = globals_buffer.buffer.binding().unwrap();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Some(prepass_downsample) = world.get_resource::<PrepassDownsampleImage>() else {
-            return Ok(());
-        };
-        let Some(prepass_downsample_tex) = images.get(&prepass_downsample.0) else {
-            return Ok(());
-        };
-
-        let Some(screenspace_target) = world.get_resource::<ScreenSpacePassesTargetImage>() else {
-            return Ok(());
-        };
-        let Some(screenspace_target_image) = images.get(&screenspace_target.current_img) else {
-            return Ok(());
-        };
-        let Some(screenspace_processed_image) = images.get(&screenspace_target.processed_img) else {
-            return Ok(());
-        };
-
-        let Some(copy_frame_data) = world.get_resource::<CopyFrameData>() else {
-            return Ok(());
-        };
-        let Some(prev_frame) = images.get(&copy_frame_data.image) else {
-            return Ok(());
-        };
-
-        let Some(voxel_passes_image) = world.get_resource::<VoxelPassesTargetImage>() else {
-            return Ok(());
-        };
-        let Some(current_voxel_image) = images.get(&voxel_passes_image.current) else {
-            return Ok(());
-        };
-
         let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
@@ -148,69 +122,36 @@ impl Node for DebugViewNode {
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
+        let entries = vec![
+            BindGroupEntry {
+                binding: 0,
+                resource: view_uniforms.clone(),
+            },
+            BindGroupEntry {
+                binding: 1,
+                resource: globals_binding.clone(),
+            },
+            BindGroupEntry {
+                binding: 2,
+                resource: BindingResource::Sampler(&debug_view_pipeline.sampler),
+            },
+            retrieve_tex_view_entry!(3, images, resource!(world, PrepassDownsampleImage).0),
+            tex_view_entry!(4, &post_process.source),
+            retrieve_tex_view_entry!(5, images, resource!(world, CopyFrameData).image),
+            retrieve_tex_view_entry!(6, images, resource!(world, ScreenSpacePasses).current_img),
+            retrieve_tex_view_entry!(7, images, resource!(world, ScreenSpacePasses).processed_img),
+            retrieve_tex_view_entry!(8, images, resource!(world, VoxelPassesTargetImage).current),
+            tex_view_entry!(9, &depth_binding.default_view),
+            tex_view_entry!(10, &normal_binding.default_view),
+            tex_view_entry!(11, &motion_vectors_binding.default_view),
+        ];
+
         let bind_group = render_context
             .render_device()
             .create_bind_group(&BindGroupDescriptor {
                 label: Some("debug_view_bind_group"),
                 layout: &debug_view_pipeline.layout,
-                entries: &[
-                    BindGroupEntry {
-                        binding: 0,
-                        resource: view_uniforms.clone(),
-                    },
-                    BindGroupEntry {
-                        binding: 1,
-                        resource: globals_binding.clone(),
-                    },
-                    BindGroupEntry {
-                        binding: 2,
-                        resource: BindingResource::Sampler(&debug_view_pipeline.sampler),
-                    },
-                    BindGroupEntry {
-                        binding: 3,
-                        resource: BindingResource::TextureView(
-                            &prepass_downsample_tex.texture_view,
-                        ),
-                    },
-                    BindGroupEntry {
-                        binding: 4,
-                        resource: BindingResource::TextureView(&post_process.source),
-                    },
-                    BindGroupEntry {
-                        binding: 5,
-                        resource: BindingResource::TextureView(&prev_frame.texture_view),
-                    },
-                    BindGroupEntry {
-                        binding: 6,
-                        resource: BindingResource::TextureView(
-                            &screenspace_target_image.texture_view,
-                        ),
-                    },
-                    BindGroupEntry {
-                        binding: 7,
-                        resource: BindingResource::TextureView(
-                            &screenspace_processed_image.texture_view,
-                        ),
-                    },
-                    BindGroupEntry {
-                        binding: 8,
-                        resource: BindingResource::TextureView(&current_voxel_image.texture_view),
-                    },
-                    BindGroupEntry {
-                        binding: 9,
-                        resource: BindingResource::TextureView(&depth_binding.default_view),
-                    },
-                    BindGroupEntry {
-                        binding: 10,
-                        resource: BindingResource::TextureView(&normal_binding.default_view),
-                    },
-                    BindGroupEntry {
-                        binding: 11,
-                        resource: BindingResource::TextureView(
-                            &motion_vectors_binding.default_view,
-                        ),
-                    },
-                ],
+                entries: &entries,
             });
 
         let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
@@ -261,40 +202,19 @@ impl FromWorld for DebugViewPipeline {
             entries: &entries,
         });
 
-        let sampler = render_device.create_sampler(&SamplerDescriptor {
-            label: Some("debug_view_sampler_descriptor"),
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Linear,
-            mipmap_filter: FilterMode::Linear,
-            ..default()
-        });
+        let sampler = render_device.create_sampler(&linear_sampler());
 
         let shader = world
             .resource::<AssetServer>()
             .load("shaders/debug_view.wgsl");
 
-        let pipeline_id =
-            world
-                .resource_mut::<PipelineCache>()
-                .queue_render_pipeline(RenderPipelineDescriptor {
-                    label: Some("post_process_pipeline".into()),
-                    layout: vec![layout.clone()],
-                    vertex: fullscreen_shader_vertex_state(),
-                    fragment: Some(FragmentState {
-                        shader,
-                        shader_defs: vec![],
-                        entry_point: "fragment".into(),
-                        targets: vec![Some(ColorTargetState {
-                            format: TextureFormat::Rgba16Float,
-                            blend: None,
-                            write_mask: ColorWrites::ALL,
-                        })],
-                    }),
-                    primitive: PrimitiveState::default(),
-                    depth_stencil: None,
-                    multisample: MultisampleState::default(),
-                    push_constant_ranges: vec![],
-                });
+        let pipeline_id = default_full_screen_tri_pipeline_desc(
+            vec![],
+            layout.clone(),
+            &mut world.resource_mut::<PipelineCache>(),
+            shader,
+            true,
+        );
 
         Self {
             layout,

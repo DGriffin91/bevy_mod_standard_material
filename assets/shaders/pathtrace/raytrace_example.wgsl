@@ -5,8 +5,6 @@ var blue_noise_tex: texture_2d_array<f32>;
 const BLUE_NOISE_TEX_DIMS = vec3<u32>(64u, 64u, 64u);
 
 #import "shaders/sampling.wgsl"
-#import "shaders/pathtrace/printing.wgsl"
-//#import "common.wgsl"
 #import "shaders/pathtrace/trace_gpu_types.wgsl"
 
 #import bevy_pbr::mesh_types

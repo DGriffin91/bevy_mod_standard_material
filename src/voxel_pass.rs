@@ -1,13 +1,18 @@
 use std::borrow::Cow;
 
 use crate::{
+    bind_group_utils::{
+        globals_entry, image_entry, prepass_get_bind_group_layout_entries, sampler_entry,
+        storage_tex_write, view_entry,
+    },
     copy_frame::CopyFrameData,
+    image,
     image_window_auto_size::get_image_bytes_count,
     pbr_material::BlueNoise,
-    prepass_downsample::{
-        prepass_get_bind_group_layout_entries, PrepassDownsampleImage, PrepassDownsampleNode,
-    },
-    screen_space_passes::{ScreenSpacePassesNode, ScreenSpacePassesTargetImage},
+    prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
+    resource, retrieve_tex_view_entry,
+    screen_space_passes::ScreenSpacePasses,
+    tex_view_entry,
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
@@ -30,9 +35,6 @@ use bevy::{
         view::{ExtractedView, ViewTarget, ViewUniformOffset, ViewUniforms},
         RenderApp,
     },
-};
-use bevy_mod_bvh::pipeline_utils::{
-    globals_entry, image_entry, sampler_entry, storage_tex_write, view_entry,
 };
 
 //const WORKGROUP_SIZE: u32 = 8;
@@ -110,42 +112,6 @@ impl Node for VoxelPassNode {
         let globals_binding = globals_buffer.buffer.binding().unwrap();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Some(prepass_downsample) = world.get_resource::<PrepassDownsampleImage>() else {
-            return Ok(());
-        };
-        let Some(prepass_downsample_tex) = images.get(&prepass_downsample.0) else {
-            return Ok(());
-        };
-
-        let Some(voxel_passes_image) = world.get_resource::<VoxelPassesTargetImage>() else {
-            return Ok(());
-        };
-        let Some(prev_voxel_image) = images.get(&voxel_passes_image.prev) else {
-            return Ok(());
-        };
-        let Some(current_voxel_image) = images.get(&voxel_passes_image.current) else {
-            return Ok(());
-        };
-
-        let Some(screenspace_target) = world.get_resource::<ScreenSpacePassesTargetImage>() else {
-            return Ok(());
-        };
-        let Some(processed_image) = images.get(&screenspace_target.processed_img) else {
-            return Ok(());
-        };
-
-        let Some(copy_frame_data) = world.get_resource::<CopyFrameData>() else {
-            return Ok(());
-        };
-        let Some(prev_frame) = images.get(&copy_frame_data.image) else {
-            return Ok(());
-        };
-
-        let blue_noise = world.resource::<BlueNoise>();
-        let Some(blue_noise) = images.get(&blue_noise.0) else {
-            return Ok(());
-        };
-
         let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
@@ -167,6 +133,9 @@ impl Node for VoxelPassNode {
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
+        let prev_voxel_image = image!(images, &resource!(world, VoxelPassesTargetImage).prev);
+        let current_voxel_image = image!(images, &resource!(world, VoxelPassesTargetImage).current);
+
         let entries = vec![
             BindGroupEntry {
                 binding: 0,
@@ -176,46 +145,19 @@ impl Node for VoxelPassNode {
                 binding: 1,
                 resource: globals_binding.clone(),
             },
-            BindGroupEntry {
-                binding: 2,
-                resource: BindingResource::TextureView(&prev_frame.texture_view),
-            },
+            retrieve_tex_view_entry!(2, images, resource!(world, CopyFrameData).image),
             BindGroupEntry {
                 binding: 3,
                 resource: BindingResource::Sampler(&pipeline.sampler),
             },
-            BindGroupEntry {
-                binding: 4,
-                resource: BindingResource::TextureView(&blue_noise.texture_view),
-            },
-            BindGroupEntry {
-                binding: 5,
-                resource: BindingResource::TextureView(&depth_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 6,
-                resource: BindingResource::TextureView(&normal_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 7,
-                resource: BindingResource::TextureView(&motion_vectors_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 8,
-                resource: BindingResource::TextureView(&prepass_downsample_tex.texture_view),
-            },
-            BindGroupEntry {
-                binding: 9,
-                resource: BindingResource::TextureView(&processed_image.texture_view),
-            },
-            BindGroupEntry {
-                binding: 10,
-                resource: BindingResource::TextureView(&prev_voxel_image.texture_view),
-            },
-            BindGroupEntry {
-                binding: 11,
-                resource: BindingResource::TextureView(&current_voxel_image.texture_view),
-            },
+            retrieve_tex_view_entry!(4, images, resource!(world, BlueNoise).0),
+            tex_view_entry!(5, &depth_binding.default_view),
+            tex_view_entry!(6, &normal_binding.default_view),
+            tex_view_entry!(7, &motion_vectors_binding.default_view),
+            retrieve_tex_view_entry!(8, images, resource!(world, PrepassDownsampleImage).0),
+            retrieve_tex_view_entry!(9, images, resource!(world, ScreenSpacePasses).processed_img),
+            tex_view_entry!(10, &prev_voxel_image.texture_view),
+            tex_view_entry!(11, &current_voxel_image.texture_view),
         ];
 
         {

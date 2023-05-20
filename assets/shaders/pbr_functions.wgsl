@@ -170,7 +170,6 @@ fn pbr(
 ) -> vec4<f32> {
     
     let screen_uv = in.frag_coord.xy / view.viewport.zw;
-    //let best_lod_offset = select_lod_offset(2.0, 4.0, screen_uv);
 
     var output_color: vec4<f32> = in.material.base_color;
 
@@ -258,43 +257,10 @@ fn pbr(
     //var ssgi = bad_ssgi(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, 1u).rgb;
     //indirect_light += ssgi * diffuse_color;
 
-    let screen_passes_processed_size = vec2<f32>(textureDimensions(screen_passes_processed).xy);
-    let hit_nd_a = normalize(textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 1.0));
-    var tot = vec3(0.0);
-    var tot_w = 0.0;
-    let search = 1u;
-    let radius = 1.0;
-    let dist_factor = 1.0;
-    let depth = distance(in.world_position.xyz, view.world_position.xyz);
-
-
-    var proposed_pos = textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 0u, 0).xyz;
-    let weight_data = textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 1u, 0).xyz;
-    var proposed_col = textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 4u, 0).xyz;
-    var M = u32(weight_data.x);
-    var w_sum = weight_data.y;
-    var weight = weight_data.z;
-    let ray_dir = normalize(proposed_pos - in.world_position.xyz);
-    let dist = distance(proposed_pos, in.world_position.xyz);
-
-    let backface = max(dot(ray_dir, in.N), 0.0);
-
-    let c_weight = w_sum / max(0.00001, f32(M) * weight);
-    // idk why this 2 is here https://github.com/EmbarkStudios/kajiya/blob/main/assets/shaders/rtdgi/restir_resolve.hlsl#LL172C22-L172C22
-    let gw = 2.0 * max(dot(in.N, ray_dir), 0.0);
-    //let limit_w = min(c_weight * gw, gw); //force conservation TODO probably shouldn't be needed
-    // proposed_col has the weight baked in
-    tot += proposed_col; //TODO use SH so we can use gw, can't use this with filtering
-    tot_w += 1.0;
-
-    indirect_light += max(tot / tot_w, vec3(0.0)) * diffuse_color;
+    indirect_light += sample_restir_gi(diffuse_color, screen_uv, in.N, in.world_position.xyz);
 
 //    let ssgi = textureSampleLevel(screen_passes_processed, linear_sampler, screen_uv + best_lod_offset, 3u, 0.0).rgb;
 //    indirect_light += ssgi * diffuse_color;
-
-    // NOT RESTIR
-//    var not_restir = not_restir(in.frag_coord, normalize(in.N), in.world_position.xyz, sample_index).rgb;
-//    indirect_light += not_restir * diffuse_color;
 
 
 
@@ -302,33 +268,7 @@ fn pbr(
 //    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 8u, vec2(2.0, 3.0)).rgb;
 //    indirect_light += ssr;
 
-    //var ssr = bad_ssr_use_voxels(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 1u, vec2(2.0, 3.0)).rgb;
-    //indirect_light += ssr;
-    //roughness = 0.01;
-    
-    //if roughness >= 0.08 {
-    //    let ssr_sharp = textureSampleLevel(screen_passes_processed, linear_sampler, screen_uv + best_lod_offset, 0u, 0.0).rgb;
-    //    let ssr_mid = textureSampleLevel(screen_passes_processed, linear_sampler, screen_uv + best_lod_offset, 1u, 0.0).rgb;
-    //    let ssr_rough = textureSampleLevel(screen_passes_processed, linear_sampler, screen_uv + best_lod_offset, 2u, 0.0).rgb;
-    //    let ssr = interpolate_colors(roughness, 0.01, ssr_sharp, 0.05, ssr_mid, 0.2, ssr_rough);
-    //    indirect_light += max(ssr.rgb, vec3(0.0)); //TODO handle metal correctly
-    //} else {
-    //    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), in.N, in.world_position.xyz, 0.0, F0, 1u, vec2(0.0, 1.0)).rgb;
-    //    indirect_light += max(ssr.rgb, vec3(0.0)); //TODO handle metal correctly
-//
-    //}
-    //var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), in.N, in.world_position.xyz, roughness, F0, 12u, vec2(2.0, 3.0)).rgb;
-    //indirect_light += max(ssr.rgb, vec3(0.0)); //TODO handle metal correctly
 
-//    indirect_light += ssr_uv(screen_uv, normalize(in.N), in.world_position.xyz, roughness).xyz;
-
-
-
-    //var pt_image =  textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv + best_lod_offset, 0.0);
-
-
-    //indirect_light += pt_image.rgb * diffuse_color;
-//    
     var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
     indirect_light *= pow(ssao, vec3(0.5));
 

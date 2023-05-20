@@ -1,12 +1,16 @@
 use std::borrow::Cow;
 
 use crate::{
+    bind_group_utils::{
+        globals_entry, image_entry, linear_sampler, prepass_get_bind_group_layout_entries,
+        sampler_entry, storage_tex_write, view_entry,
+    },
     copy_frame::CopyFrameData,
+    image,
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
     pbr_material::{BlueNoise, CustomStandardMaterial},
-    prepass_downsample::{
-        prepass_get_bind_group_layout_entries, PrepassDownsampleImage, PrepassDownsampleNode,
-    },
+    prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
+    resource, retrieve_tex_view_entry, tex_view_entry,
     voxel_pass::{VoxelPassNode, VoxelPassesTargetImage},
 };
 use bevy::{
@@ -31,9 +35,6 @@ use bevy::{
         RenderApp,
     },
 };
-use bevy_mod_bvh::pipeline_utils::{
-    globals_entry, image_entry, sampler_entry, storage_tex_write, view_entry,
-};
 
 const WORKGROUP_SIZE: u32 = 8;
 const LAYERS: u32 = 6;
@@ -43,9 +44,9 @@ impl Plugin for ScreenSpacePassesPlugin {
         app.add_systems(Startup, setup_image)
             .add_systems(
                 Update,
-                auto_resize_image::<CustomStandardMaterial, ScreenSpacePassesTargetImage>,
+                auto_resize_image::<CustomStandardMaterial, ScreenSpacePasses>,
             )
-            .add_plugin(ExtractResourcePlugin::<ScreenSpacePassesTargetImage>::default());
+            .add_plugin(ExtractResourcePlugin::<ScreenSpacePasses>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -116,42 +117,6 @@ impl Node for ScreenSpacePassesNode {
         let globals_binding = globals_buffer.buffer.binding().unwrap();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Some(prepass_downsample) = world.get_resource::<PrepassDownsampleImage>() else {
-            return Ok(());
-        };
-        let Some(prepass_downsample_tex) = images.get(&prepass_downsample.0) else {
-            return Ok(());
-        };
-
-        let Some(screenspace_target) = world.get_resource::<ScreenSpacePassesTargetImage>() else {
-            return Ok(());
-        };
-        let Some(target_image) = images.get(&screenspace_target.current_img) else {
-            return Ok(());
-        };
-        let Some(processed_image) = images.get(&screenspace_target.processed_img) else {
-            return Ok(());
-        };
-
-        let Some(copy_frame_data) = world.get_resource::<CopyFrameData>() else {
-            return Ok(());
-        };
-        let Some(prev_frame) = images.get(&copy_frame_data.image) else {
-            return Ok(());
-        };
-
-        let blue_noise = world.resource::<BlueNoise>();
-        let Some(blue_noise) = images.get(&blue_noise.0) else {
-            return Ok(());
-        };
-
-        let Some(voxel_passes_image) = world.get_resource::<VoxelPassesTargetImage>() else {
-            return Ok(());
-        };
-        let Some(current_voxel_image) = images.get(&voxel_passes_image.current) else {
-            return Ok(());
-        };
-
         let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
@@ -172,20 +137,16 @@ impl Node for ScreenSpacePassesNode {
             return Ok(());
         };
 
+        let target_image = image!(images, &resource!(world, ScreenSpacePasses).current_img);
+
         let depth_binding = prepass_textures.depth.as_ref().unwrap();
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
         let mut entries = vec![
             // at the start so they are easy to swap for the blur
-            BindGroupEntry {
-                binding: 9,
-                resource: BindingResource::TextureView(&processed_image.texture_view),
-            },
-            BindGroupEntry {
-                binding: 10,
-                resource: BindingResource::TextureView(&target_image.texture_view),
-            },
+            retrieve_tex_view_entry!(9, images, resource!(world, ScreenSpacePasses).processed_img),
+            tex_view_entry!(10, &target_image.texture_view),
             BindGroupEntry {
                 binding: 0,
                 resource: view_uniforms.clone(),
@@ -194,38 +155,17 @@ impl Node for ScreenSpacePassesNode {
                 binding: 1,
                 resource: globals_binding.clone(),
             },
-            BindGroupEntry {
-                binding: 2,
-                resource: BindingResource::TextureView(&prev_frame.texture_view),
-            },
+            retrieve_tex_view_entry!(2, images, resource!(world, CopyFrameData).image),
             BindGroupEntry {
                 binding: 3,
                 resource: BindingResource::Sampler(&pipeline.sampler),
             },
-            BindGroupEntry {
-                binding: 4,
-                resource: BindingResource::TextureView(&blue_noise.texture_view),
-            },
-            BindGroupEntry {
-                binding: 5,
-                resource: BindingResource::TextureView(&depth_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 6,
-                resource: BindingResource::TextureView(&normal_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 7,
-                resource: BindingResource::TextureView(&motion_vectors_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 8,
-                resource: BindingResource::TextureView(&prepass_downsample_tex.texture_view),
-            },
-            BindGroupEntry {
-                binding: 11,
-                resource: BindingResource::TextureView(&current_voxel_image.texture_view),
-            },
+            retrieve_tex_view_entry!(4, images, resource!(world, BlueNoise).0),
+            tex_view_entry!(5, &depth_binding.default_view),
+            tex_view_entry!(6, &normal_binding.default_view),
+            tex_view_entry!(7, &motion_vectors_binding.default_view),
+            retrieve_tex_view_entry!(8, images, resource!(world, PrepassDownsampleImage).0),
+            retrieve_tex_view_entry!(11, images, resource!(world, VoxelPassesTargetImage).current),
         ];
 
         {
@@ -363,7 +303,7 @@ impl FromWorld for TracePipeline {
 
 #[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
 #[uuid = "c4fe681e-4dd8-47e5-8039-e9678ad4d717"]
-pub struct ScreenSpacePassesTargetImage {
+pub struct ScreenSpacePasses {
     pub current_img: Handle<Image>,
     pub processed_img: Handle<Image>,
 }
@@ -393,13 +333,7 @@ fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResM
             mip_level_count: 1,
             sample_count: 1,
         },
-        sampler_descriptor: ImageSampler::Descriptor(SamplerDescriptor {
-            label: Some("ScreenSpacePassesNode_sampler_descriptor"),
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Linear,
-            mipmap_filter: FilterMode::Linear,
-            ..default()
-        }),
+        sampler_descriptor: ImageSampler::Descriptor(linear_sampler()),
         texture_view_descriptor: Some(TextureViewDescriptor {
             label: None,
             format: Some(TextureFormat::Rgba16Float),
@@ -413,13 +347,13 @@ fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResM
     };
     let img2 = img.clone();
 
-    commands.insert_resource(ScreenSpacePassesTargetImage {
+    commands.insert_resource(ScreenSpacePasses {
         current_img: images.add(img),
         processed_img: images.add(img2),
     });
 }
 
-impl FrameData for ScreenSpacePassesTargetImage {
+impl FrameData for ScreenSpacePasses {
     fn image_h(&self) -> Handle<Image> {
         self.processed_img.clone()
     }

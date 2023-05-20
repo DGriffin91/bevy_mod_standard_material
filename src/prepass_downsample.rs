@@ -10,10 +10,9 @@ use bevy::{
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-            BindGroupLayoutEntry, BindingResource, BindingType, CachedComputePipelineId,
-            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache,
-            Sampler, SamplerDescriptor, ShaderStages, StorageTextureAccess, TextureAspect,
-            TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
+            BindingResource, CachedComputePipelineId, ComputePassDescriptor,
+            ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache, SamplerDescriptor,
+            TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
             TextureViewDescriptor, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
@@ -27,8 +26,11 @@ const WORKGROUP_SIZE: u32 = 8;
 const MIP_LEVELS: u32 = 4;
 
 use crate::{
+    bind_group_utils::{prepass_get_bind_group_layout_entries, storage_tex_readwrite},
+    image,
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
     pbr_material::CustomStandardMaterial,
+    resource, tex_view_entry,
 };
 
 pub struct PrepassDownsample;
@@ -110,13 +112,6 @@ impl Node for PrepassDownsampleNode {
         let copy_frame_pipeline = world.resource::<PrepassDownsamplePipeline>();
         let images = world.resource::<RenderAssets<Image>>();
         let pipeline_cache = world.resource::<PipelineCache>();
-        let Some(prepass_downsample) = world.get_resource::<PrepassDownsampleImage>() else {
-            return Ok(());
-        };
-
-        let Some(target_image) = images.get(&prepass_downsample.0) else {
-            return Ok(());
-        };
 
         let Some(pipeline) = pipeline_cache.get_compute_pipeline(copy_frame_pipeline.pipeline_id) else {
             return Ok(());
@@ -126,19 +121,12 @@ impl Node for PrepassDownsampleNode {
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
+        let target_image = image!(images, &resource!(world, PrepassDownsampleImage).0);
+
         let mut entries = vec![
-            BindGroupEntry {
-                binding: 0,
-                resource: BindingResource::TextureView(&depth_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 1,
-                resource: BindingResource::TextureView(&normal_binding.default_view),
-            },
-            BindGroupEntry {
-                binding: 2,
-                resource: BindingResource::TextureView(&motion_vectors_binding.default_view),
-            },
+            tex_view_entry!(0, &depth_binding.default_view),
+            tex_view_entry!(1, &normal_binding.default_view),
+            tex_view_entry!(2, &motion_vectors_binding.default_view),
         ];
 
         let mut views = Vec::new();
@@ -203,16 +191,11 @@ impl FromWorld for PrepassDownsamplePipeline {
         entries.extend_from_slice(&prepass_get_bind_group_layout_entries([0, 1, 2], false));
 
         for i in 0..MIP_LEVELS {
-            entries.push(BindGroupLayoutEntry {
-                binding: 3 + i,
-                visibility: ShaderStages::COMPUTE,
-                ty: BindingType::StorageTexture {
-                    access: StorageTextureAccess::ReadWrite,
-                    format: TextureFormat::Rgba32Float,
-                    view_dimension: TextureViewDimension::D2,
-                },
-                count: None,
-            });
+            entries.push(storage_tex_readwrite(
+                3 + i,
+                TextureFormat::Rgba32Float,
+                TextureViewDimension::D2,
+            ));
         }
 
         let layout =
@@ -314,45 +297,4 @@ impl FrameData for PrepassDownsampleImage {
         image.data = vec![0; get_image_bytes_count(width, height, MIP_LEVELS, 4, 4)];
         //self.0 = images.add(image);
     }
-}
-
-pub fn prepass_get_bind_group_layout_entries(
-    bindings: [u32; 3],
-    multisampled: bool,
-) -> [BindGroupLayoutEntry; 3] {
-    [
-        // Depth texture
-        BindGroupLayoutEntry {
-            binding: bindings[0],
-            visibility: ShaderStages::COMPUTE,
-            ty: BindingType::Texture {
-                multisampled,
-                sample_type: TextureSampleType::Depth,
-                view_dimension: TextureViewDimension::D2,
-            },
-            count: None,
-        },
-        // Normal texture
-        BindGroupLayoutEntry {
-            binding: bindings[1],
-            visibility: ShaderStages::COMPUTE,
-            ty: BindingType::Texture {
-                multisampled,
-                sample_type: TextureSampleType::Float { filterable: false },
-                view_dimension: TextureViewDimension::D2,
-            },
-            count: None,
-        },
-        // Motion Vectors texture
-        BindGroupLayoutEntry {
-            binding: bindings[2],
-            visibility: ShaderStages::COMPUTE,
-            ty: BindingType::Texture {
-                multisampled,
-                sample_type: TextureSampleType::Float { filterable: false },
-                view_dimension: TextureViewDimension::D2,
-            },
-            count: None,
-        },
-    ]
 }

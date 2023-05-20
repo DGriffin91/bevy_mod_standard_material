@@ -1,12 +1,15 @@
 use std::borrow::Cow;
 
 use crate::{
+    bind_group_layout_entry,
+    bind_group_utils::{
+        globals_entry, image_entry, prepass_get_bind_group_layout_entries, sampler_entry,
+        storage_tex_write, uniform_entry, view_entry,
+    },
     copy_frame::CopyFrameData,
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
     pbr_material::{BlueNoise, CustomStandardMaterial},
-    prepass_downsample::{
-        prepass_get_bind_group_layout_entries, PrepassDownsampleImage, PrepassDownsampleNode,
-    },
+    prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
     screen_space_passes::ScreenSpacePassesNode,
 };
 use bevy::{
@@ -36,9 +39,8 @@ use bevy::{
         Extract, RenderApp,
     },
 };
-use bevy_mod_bvh::pipeline_utils::*;
+
 use bevy_mod_bvh::{
-    bind_group_layout_entry,
     gpu_data::{
         extract_gpu_data, new_storage_buffer, DynamicInstanceOrder, GPUBuffers, GPUDataPlugin,
         StaticInstanceOrder,

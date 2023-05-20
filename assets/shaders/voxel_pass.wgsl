@@ -3,7 +3,6 @@ var blue_noise_tex: texture_2d_array<f32>;
 const BLUE_NOISE_TEX_DIMS = vec3<u32>(64u, 64u, 64u);
 
 #import "shaders/sampling.wgsl"
-#import "shaders/pathtrace/printing.wgsl"
 #import "shaders/bicubic.wgsl"
 //#import "common.wgsl"
 
@@ -50,7 +49,6 @@ This is a voxel rate shader that checks if the fragment depth is intersecting wi
 #import "shaders/depth_buffer_raymarching.wgsl"
 #import "shaders/bad_ssr.wgsl"
 #import "shaders/bad_ssgi.wgsl"
-#import "shaders/ssr_uv_generate.wgsl"
 
 #define VOXEL_3D
 #import "shaders/voxel_cache.wgsl"

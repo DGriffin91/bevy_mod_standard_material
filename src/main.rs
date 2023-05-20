@@ -1,5 +1,6 @@
 //! Loads and renders a glTF file as a scene.
 
+mod bind_group_utils;
 mod bistro;
 mod camera_controller;
 mod copy_frame;
@@ -69,7 +70,7 @@ fn main() {
         .add_plugin(CopyFramePlugin)
         .add_plugin(PrepassDownsample)
         .add_plugin(VoxelPassPlugin)
-        //.add_plugin(PathTracePlugin)
+        .add_plugin(PathTracePlugin)
         .add_plugin(ScreenSpacePassesPlugin)
         .add_plugin(CoordinateTransformationsPlugin)
         .add_plugin(DebugViewPlugin)
