@@ -1,9 +1,6 @@
 
 fn sample_restir_gi(diffuse_color: vec3<f32>, screen_uv: vec2<f32>, surface_normal: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
     let screen_passes_processed_size = vec2<f32>(textureDimensions(screen_passes_processed).xy);
-    let hit_nd_a = normalize(textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 1.0));
-
-    let depth = distance(world_position, view.world_position.xyz);
 
     var proposed_pos = textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 0u, 0).xyz;
     let weight_data = textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 1u, 0).xyz;

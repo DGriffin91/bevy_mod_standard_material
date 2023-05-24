@@ -263,14 +263,18 @@ fn pbr(
 //    indirect_light += ssgi * diffuse_color;
 
 
+    //let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0u, 0.0).rgb);
+    //indirect_light += pt_image * diffuse_color;
+
+
 
     // BAD SSR
-//    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 8u, vec2(2.0, 3.0)).rgb;
-//    indirect_light += ssr;
+    var ssr = bad_ssr(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, roughness, F0, 8u, vec2(2.0, 3.0)).rgb;
+    indirect_light += ssr;
 
 
     var ssao = bad_gtao(in.frag_coord, in.world_position.xyz, in.world_normal).rgb;
-    indirect_light *= pow(ssao, vec3(0.5));
+    indirect_light *= pow(ssao, vec3(1.0));
 
 
     // Environment map light (indirect)

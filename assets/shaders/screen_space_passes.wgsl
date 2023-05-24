@@ -5,8 +5,10 @@ Move voxels with view, needs to happen in voxel rate pass or equivalent
 Optimize voxel traversal, we understep currently so we naively hit every voxel
 */
 
-#define USE_VOXEL_FALLBACK
+#define RAY_MARCH
+//#define USE_VOXEL_FALLBACK
 #define FILTER_SSGI
+#define USE_PATH_TRACED
 
 @group(0) @binding(4)
 var blue_noise_tex: texture_2d_array<f32>;
@@ -43,6 +45,8 @@ var screen_passes_processed: texture_2d_array<f32>;
 var screen_passes_target: texture_storage_2d_array<rgba16float, write>;
 @group(0) @binding(11)
 var voxel_cache: texture_3d<f32>;
+@group(0) @binding(12)
+var path_trace_image: texture_2d_array<f32>;
 
 
 
@@ -246,11 +250,13 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
 
         var ray_end_ws = probe_pos + direction * trace_dist;
 
+        var march_t = 0.0;
 
-
+#ifdef RAY_MARCH
         dmr = to_ws(dmr, ray_end_ws);
         dmr.jitter = jitter;
         let raymarch_result = march(dmr, 0u);
+        march_t = raymarch_result.hit_t;
         //if false {
         if (raymarch_result.hit) {
             let hit_nd = textureSampleLevel(prepass_downsample, linear_sampler, raymarch_result.hit_uv, 1.0);
@@ -290,8 +296,9 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
                 }
             }
         } else {
+#endif //RAY_MARCH
             #ifdef USE_VOXEL_FALLBACK
-            let ray_pos_ndc = mix(dmr.ray_start_cs, dmr.ray_end_cs, raymarch_result.hit_t);
+            let ray_pos_ndc = mix(dmr.ray_start_cs, dmr.ray_end_cs, march_t);
             let ray_end_pos_ws = position_ndc_to_world(ray_pos_ndc);
             let ray_one_voxel_away = ray_start_ws + direction * VOXEL_SIZE * 1.5;
             let voxel_ray_start = select(ray_one_voxel_away, ray_end_pos_ws, 
@@ -312,7 +319,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
                 var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
                 let brdf = max(dot(surface_normal, direction), 0.0);
                 var new_weight = gr * (1.0 / (1.0 + dist * dist));
-                new_weight *= brdf * voxel_derate * voxel_hit.t;
+                new_weight *= brdf * voxel_derate;
                 new_weight = max(new_weight, 0.0);
 
                 w_sum += new_weight;
@@ -330,17 +337,60 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
                 }
             }
             #endif
+#ifdef RAY_MARCH
         }
+#endif //RAY_MARCH
         M += 1u;
     }
+
+#ifdef USE_PATH_TRACED
+    { // sample from path traced
+        let pt_samples = 5u;
+        let scale = 1.25;
+        let path_trace_image_dims = vec2<f32>(textureDimensions(path_trace_image).xy);
+        for (var i = 0u; i <= pt_samples; i+=1u) {
+            let seed = i * pt_samples + globals.frame_count * pt_samples;
+            let white_frame_noise = white_frame_noise(i + 1821u);
+            let urand = fract_blue_noise_for_pixel(ufrag_coord, seed, white_frame_noise);  
+            let offset_rand = (urand.wz * 2.0 - 1.0) / path_trace_image_dims * scale;
+            let coord = vec2<i32>((screen_uv + offset_rand) * path_trace_image_dims);
+            let path_trace_data = textureLoad(path_trace_image, coord, 0u, 0);
+            let color = path_trace_data.rgb; //TODO, why is it so much brighter
+            let path_trace_data2 = textureLoad(path_trace_image, coord, 1u, 0);
+            let direction = path_trace_data2.xyz;
+            let dist = path_trace_data2.w;
+
+            let prop_pos = probe_pos + direction * dist;
+            var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
+            let brdf = max(dot(surface_normal, direction), 0.0);
+            var new_weight = brdf * gr * (1.0 / (1.0 + dist * dist));
+            new_weight = max(new_weight, 0.0);
+
+            w_sum += new_weight;
+
+            var threshold = new_weight / w_sum;
+            //threshold /= f32(pt_samples); //TODO?
+
+            if M == 0u || proposed_pos.x == F32_MAX {
+                threshold = 1.0;
+            }
+
+            if threshold > urand.z {
+                proposed_pos = prop_pos;
+                weight = new_weight;
+                probe_latest_color = color;
+            }
+        }
+    }
+#endif //USE_PATH_TRACED
 
     let dist_to_hit = distance(proposed_pos, world_position_offs);
 
     let falloff = (1.0 / (1.0 + dist_to_hit * dist_to_hit));
-    var hysterisis = 0.5;
+    var hysterisis = 0.1;
     let w = w_sum / max(0.00001, f32(M) * weight);
 
-    let resolve_col = min(probe_latest_color, probe_latest_color * falloff * w);
+    let resolve_col = min(probe_latest_color, probe_latest_color * w * falloff);
 
     probe_color = mix(probe_color, resolve_col, hysterisis);
 
@@ -451,4 +501,7 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     textureStore(screen_passes_target, location, 3, textureLoad(screen_passes_processed, location, 3, 0));
 
     textureStore(screen_passes_target, location, 5, textureLoad(screen_passes_processed, location, 5, 0));
+
+    textureStore(screen_passes_target, location, 6, textureLoad(screen_passes_processed, location, 6, 0));
+    textureStore(screen_passes_target, location, 7, textureLoad(screen_passes_processed, location, 7, 0));
 }

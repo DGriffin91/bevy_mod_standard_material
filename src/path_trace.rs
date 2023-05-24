@@ -15,6 +15,7 @@ use crate::{
     pbr_material::{BlueNoise, CustomStandardMaterial},
     prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
     resource,
+    screen_space_passes::ScreenSpacePasses,
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
@@ -33,8 +34,9 @@ use bevy::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
             BindingResource, CachedComputePipelineId, ComputePassDescriptor,
             ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache, Sampler,
-            SamplerDescriptor, ShaderType, StorageBuffer, TextureDescriptor, TextureDimension,
-            TextureFormat, TextureUsages, TextureViewDimension,
+            SamplerDescriptor, ShaderType, StorageBuffer, TextureAspect, TextureDescriptor,
+            TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+            TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice, RenderQueue},
         texture::ImageSampler,
@@ -52,6 +54,7 @@ use bevy_mod_bvh::{
 };
 
 const WORKGROUP_SIZE: u32 = 8;
+const LAYERS: u32 = 3;
 pub struct PathTracePlugin;
 impl Plugin for PathTracePlugin {
     fn build(&self, app: &mut App) {
@@ -185,6 +188,12 @@ impl Node for PathTraceNode {
             tex_view_entry(16, &normal_binding.default_view),
             tex_view_entry(17, &motion_vectors_binding.default_view),
             get_tex_view_entry!(20, images, resource!(world, PrepassDownsampleImage).0),
+            get_tex_view_entry!(21, images, resource!(world, ScreenSpacePasses).current_img),
+            get_tex_view_entry!(
+                22,
+                images,
+                resource!(world, ScreenSpacePasses).processed_img
+            ),
         ];
 
         entries.extend(gpu_buffer_bind_group_entries);
@@ -258,6 +267,9 @@ impl FromWorld for TracePipeline {
         let shader = world
             .resource::<AssetServer>()
             .load("shaders/pathtrace/raytrace_example.wgsl");
+        let blur_shader = world
+            .resource::<AssetServer>()
+            .load("shaders/pathtrace/blur.wgsl");
 
         let render_device = world.resource::<RenderDevice>();
 
@@ -270,13 +282,15 @@ impl FromWorld for TracePipeline {
             image_layout_entry(12, TextureViewDimension::D2Array),
             MaterialData::bind_group_layout_entry(13),
             MaterialData::bind_group_layout_entry(14),
-            image_layout_entry(18, TextureViewDimension::D2),
+            image_layout_entry(18, TextureViewDimension::D2Array),
             storage_tex_write_layout_entry(
                 19,
                 TextureFormat::Rgba16Float,
-                TextureViewDimension::D2,
+                TextureViewDimension::D2Array,
             ),
             image_layout_entry(20, TextureViewDimension::D2),
+            image_layout_entry(21, TextureViewDimension::D2Array),
+            image_layout_entry(22, TextureViewDimension::D2Array),
         ];
 
         entries.append(&mut GPUBuffers::bind_group_layout_entry([5, 6, 7, 8, 9, 10, 11]).to_vec());
@@ -297,7 +311,7 @@ impl FromWorld for TracePipeline {
             label: None,
             layout: vec![layout.clone()],
             push_constant_ranges: Vec::new(),
-            shader: shader.clone(),
+            shader,
             shader_defs: vec![],
             entry_point: Cow::from("update"),
         });
@@ -306,7 +320,7 @@ impl FromWorld for TracePipeline {
             label: None,
             layout: vec![layout.clone()],
             push_constant_ranges: Vec::new(),
-            shader,
+            shader: blur_shader,
             shader_defs: vec![],
             entry_point: Cow::from("blur"),
         });
@@ -434,13 +448,16 @@ pub struct PathTraceImage {
 
 fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResMut<Assets<Image>>) {
     let window = windows.single();
+
+    let width = ((window.physical_width() / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
+    let height = ((window.physical_height() / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
     let size = Extent3d {
-        width: window.physical_width() / 4,
-        height: window.physical_height() / 4,
-        depth_or_array_layers: 1,
+        width,
+        height,
+        depth_or_array_layers: LAYERS,
     };
     let img = Image {
-        data: vec![0; get_image_bytes_count(size.width, size.height, 1, 2, 4)],
+        data: vec![0; get_image_bytes_count(size.width, size.height, 1, 2, 4) * LAYERS as usize],
         texture_descriptor: TextureDescriptor {
             dimension: TextureDimension::D2,
             format: TextureFormat::Rgba16Float,
@@ -460,7 +477,16 @@ fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResM
             mipmap_filter: FilterMode::Linear,
             ..default()
         }),
-        texture_view_descriptor: None,
+        texture_view_descriptor: Some(TextureViewDescriptor {
+            label: None,
+            format: Some(TextureFormat::Rgba16Float),
+            dimension: Some(TextureViewDimension::D2Array),
+            base_mip_level: 0,
+            mip_level_count: None,
+            base_array_layer: 0,
+            array_layer_count: Some(LAYERS),
+            aspect: TextureAspect::All,
+        }),
     };
     let img2 = img.clone();
 
@@ -489,9 +515,9 @@ impl FrameData for PathTraceImage {
         image.texture_descriptor.size = Extent3d {
             width: size.0,
             height: size.1,
-            depth_or_array_layers: 1,
+            depth_or_array_layers: LAYERS,
         };
-        image.data = vec![0; get_image_bytes_count(size.0, size.1, 1, 2, 4)];
+        image.data = vec![0; get_image_bytes_count(size.0, size.1, 1, 2, 4) * LAYERS as usize];
         let img2 = image.clone();
         let image2 = images.get_mut(&self.processed_img).unwrap();
         *image2 = img2;

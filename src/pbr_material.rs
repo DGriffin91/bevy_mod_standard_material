@@ -250,7 +250,7 @@ pub struct CustomStandardMaterial {
     #[texture(14)]
     #[sampler(15)]
     pub prepass_downsample: Option<Handle<Image>>,
-    #[texture(16)]
+    #[texture(16, dimension = "2d_array")]
     #[sampler(17)]
     pub pathtrace_output: Option<Handle<Image>>,
     #[texture(18, dimension = "2d_array")]

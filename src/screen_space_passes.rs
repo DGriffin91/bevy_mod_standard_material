@@ -9,6 +9,7 @@ use crate::{
     copy_frame::CopyFrameData,
     get_tex_view_entry, image,
     image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
+    path_trace::PathTraceImage,
     pbr_material::{BlueNoise, CustomStandardMaterial},
     prepass_downsample::PrepassDownsampleImage,
     resource,
@@ -37,7 +38,7 @@ use bevy::{
 };
 
 const WORKGROUP_SIZE: u32 = 8;
-const LAYERS: u32 = 6;
+const LAYERS: u32 = 8;
 pub struct ScreenSpacePassesPlugin;
 impl Plugin for ScreenSpacePassesPlugin {
     fn build(&self, app: &mut App) {
@@ -153,6 +154,7 @@ impl Node for ScreenSpacePassesNode {
             tex_view_entry(7, &motion_vectors_binding.default_view),
             get_tex_view_entry!(8, images, resource!(world, PrepassDownsampleImage).0),
             get_tex_view_entry!(11, images, resource!(world, VoxelPassesTargetImage).current),
+            get_tex_view_entry!(12, images, resource!(world, PathTraceImage).processed_img),
         ];
 
         {
@@ -241,6 +243,7 @@ impl FromWorld for TracePipeline {
                 TextureViewDimension::D2Array,
             ),
             image_layout_entry(11, TextureViewDimension::D3),
+            image_layout_entry(12, TextureViewDimension::D2Array),
         ];
 
         // Prepass

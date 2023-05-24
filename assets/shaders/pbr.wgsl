@@ -18,7 +18,7 @@ var prepass_downsample: texture_2d<f32>;
 var linear_sampler: sampler;
 
 @group(1) @binding(16)
-var pathtrace_tex: texture_2d<f32>;
+var pathtrace_tex: texture_2d_array<f32>;
 @group(1) @binding(17)
 var pathtrace_samp: sampler;
 
@@ -191,8 +191,8 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 
     let last_image = vec3(textureSampleLevel(prev_frame_tex, prev_frame_sampler, history_uv, 0.0).rgb);
 
-    //let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0.0).rgb);
-    //return vec4(mix(last_image, pt_image, 1.0), output_color.a);
+    //let pt_image = vec3(textureSampleLevel(pathtrace_tex, pathtrace_samp, screen_uv, 0u, 0.0).rgb);
+    //return vec4(mix(last_image, pt_image, 0.1), output_color.a);
 
     return vec4(mix(last_image, output_color.rgb, 1.0), output_color.a);
 

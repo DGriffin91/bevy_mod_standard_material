@@ -28,6 +28,7 @@ use bevy_mod_bvh::{DynamicTLAS, StaticTLAS};
 use copy_frame::CopyFramePlugin;
 use debug_view::DebugViewPlugin;
 use kitchen::KitchenPlugin;
+use path_trace::PathTracePlugin;
 use pbr_material::{load_blue_noise, swap_standard_material, BlueNoise, CustomStandardMaterial};
 use prepass_downsample::PrepassDownsample;
 use screen_space_passes::ScreenSpacePassesPlugin;
@@ -62,7 +63,7 @@ fn main() {
         .add_plugin(CopyFramePlugin)
         .add_plugin(PrepassDownsample)
         .add_plugin(VoxelPassPlugin)
-        //.add_plugin(PathTracePlugin)
+        .add_plugin(PathTracePlugin)
         .add_plugin(ScreenSpacePassesPlugin)
         .add_plugin(CoordinateTransformationsPlugin)
         .add_plugin(DebugViewPlugin)
