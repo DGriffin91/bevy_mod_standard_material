@@ -7,7 +7,8 @@ use bevy::{
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
             BindingResource, CachedRenderPipelineId, Operations, PipelineCache,
-            RenderPassColorAttachment, RenderPassDescriptor, Sampler, TextureViewDimension,
+            RenderPassColorAttachment, RenderPassDescriptor, Sampler, TextureAspect,
+            TextureViewDescriptor, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
         view::{ExtractedView, ViewTarget, ViewUniformOffset},
@@ -114,6 +115,12 @@ impl Node for DebugViewNode {
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
+        let depth_view = depth_binding.texture.create_view(&TextureViewDescriptor {
+            label: Some("prepass_depth"),
+            aspect: TextureAspect::DepthOnly,
+            ..default()
+        });
+
         let entries = vec![
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
@@ -124,7 +131,7 @@ impl Node for DebugViewNode {
             get_tex_view_entry!(6, images, resource!(world, ScreenSpacePasses).current_img),
             get_tex_view_entry!(7, images, resource!(world, ScreenSpacePasses).processed_img),
             get_tex_view_entry!(8, images, resource!(world, VoxelPassesTargetImage).current),
-            tex_view_entry(9, &depth_binding.default_view),
+            tex_view_entry(9, &depth_view),
             tex_view_entry(10, &normal_binding.default_view),
             tex_view_entry(11, &motion_vectors_binding.default_view),
         ];

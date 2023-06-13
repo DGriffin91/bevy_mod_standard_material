@@ -125,6 +125,13 @@ impl Node for VoxelPassNode {
         };
 
         let depth_binding = prepass_textures.depth.as_ref().unwrap();
+
+        let depth_view = depth_binding.texture.create_view(&TextureViewDescriptor {
+            label: Some("prepass_depth"),
+            aspect: TextureAspect::DepthOnly,
+            ..default()
+        });
+
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
@@ -137,7 +144,7 @@ impl Node for VoxelPassNode {
             get_tex_view_entry!(2, images, resource!(world, CopyFrameData).image),
             sampler_binding_entry(3, &pipeline.sampler),
             get_tex_view_entry!(4, images, resource!(world, BlueNoise).0),
-            tex_view_entry(5, &depth_binding.default_view),
+            tex_view_entry(5, &depth_view),
             tex_view_entry(6, &normal_binding.default_view),
             tex_view_entry(7, &motion_vectors_binding.default_view),
             get_tex_view_entry!(8, images, resource!(world, PrepassDownsampleImage).0),

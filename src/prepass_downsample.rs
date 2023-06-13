@@ -125,8 +125,13 @@ impl Node for PrepassDownsampleNode {
 
         let target_image = image!(images, &resource!(world, PrepassDownsampleImage).0);
 
-        let mut entries = vec![
-            tex_view_entry(0, &depth_binding.default_view),
+        let depth_view = depth_binding.texture.create_view(&TextureViewDescriptor {
+            label: Some("prepass_depth"),
+            aspect: TextureAspect::DepthOnly,
+            ..default()
+        });
+        let mut entries: Vec<BindGroupEntry<'_>> = vec![
+            tex_view_entry(0, &depth_view),
             tex_view_entry(1, &normal_binding.default_view),
             tex_view_entry(2, &motion_vectors_binding.default_view),
         ];
@@ -155,7 +160,7 @@ impl Node for PrepassDownsampleNode {
         let bind_group = render_context
             .render_device()
             .create_bind_group(&BindGroupDescriptor {
-                label: Some("copy_frame_bind_group"),
+                label: Some("prepass_downsample_bind_group"),
                 layout: &copy_frame_pipeline.layout,
 
                 entries: &entries,

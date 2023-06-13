@@ -170,6 +170,12 @@ impl Node for PathTraceNode {
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
+        let depth_view = depth_binding.texture.create_view(&TextureViewDescriptor {
+            label: Some("prepass_depth"),
+            aspect: TextureAspect::DepthOnly,
+            ..default()
+        });
+
         let target_image = image!(images, &resource!(world, PathTraceImage).current_img);
 
         let mut entries = vec![
@@ -184,7 +190,7 @@ impl Node for PathTraceNode {
             get_tex_view_entry!(12, images, resource!(world, BlueNoise).0),
             binding_entry!(13, gpu_mat_buffers.static_material_instance_buffer),
             binding_entry!(14, gpu_mat_buffers.dynamic_material_instance_buffer),
-            tex_view_entry(15, &depth_binding.default_view),
+            tex_view_entry(15, &depth_view),
             tex_view_entry(16, &normal_binding.default_view),
             tex_view_entry(17, &motion_vectors_binding.default_view),
             get_tex_view_entry!(20, images, resource!(world, PrepassDownsampleImage).0),
@@ -356,14 +362,15 @@ fn set_meshes_tlas(
     }
 }
 
-fn update_settings(mut settings: Query<&mut TraceSettings>, diagnostics: Res<Diagnostics>) {
+fn update_settings(mut settings: Query<&mut TraceSettings>) {
+    //, diagnostics: Res<Diagnostics>
     for mut setting in &mut settings {
         setting.frame = setting.frame.wrapping_add(1);
-        if let Some(diag) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
-            let hysteresis = 0.9;
-            let fps = hysteresis + diag.value().unwrap_or(0.0) as f32;
-            setting.fps = setting.fps * hysteresis + fps * (1.0 - hysteresis);
-        }
+        //if let Some(diag) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
+        //    let hysteresis = 0.9;
+        //    let fps = hysteresis + diag.value().unwrap_or(0.0) as f32;
+        //    setting.fps = setting.fps * hysteresis + fps * (1.0 - hysteresis);
+        //}
     }
 }
 

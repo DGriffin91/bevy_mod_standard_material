@@ -48,7 +48,7 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
 
     let samples = 1u;
     var sun_dir = vec3(-0.25, -0.24, 1.0);
-    let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0;
+    let sun_color = vec3(0.95, 0.79268, 0.637758) * 0.0;
     //var sun_dir = vec3(0.22, -1.0, -0.2); //sponza
     //let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0; //sponza
     let sky_color = vec3(1.75, 1.9, 1.99) * 2.0;

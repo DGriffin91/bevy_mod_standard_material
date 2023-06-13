@@ -6,9 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { git = "https://github.com/mockersf/bevy", branch = "fix-examples-after-webgpu", features = ["dds", "jpeg"] }
+bevy = { git = "https://github.com/DGriffin91/bevy", branch = "deferred", features = ["dds", "jpeg"] }
 bevy_coordinate_systems = { git = "https://github.com/DGriffin91/bevy_coordinate_systems" }
 bevy_mod_bvh = { path = "H:/dev/programming/rust/bevy/bevy_mod_bvh/bevy_mod_bvh" }
+bevy_hanabi = { path = "H:/dev/programming/rust/bevy/hanabi/11/bevy_hanabi", features = ["3d"] }
 
 # Enable only a small amount of optimization in debug mode
 [profile.dev]
@@ -19,4 +20,4 @@ opt-level = 1
 opt-level = 3
 
 [patch."https://github.com/bevyengine/bevy"]
-bevy = { git = "https://github.com/mockersf/bevy", branch = "fix-examples-after-webgpu" }
+bevy = { git = "https://github.com/DGriffin91/bevy", branch = "deferred" }

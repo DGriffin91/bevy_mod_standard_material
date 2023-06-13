@@ -143,7 +143,7 @@ impl Node for FrameCopyNode {
                 if pass_n == 0 {
                     BindGroupEntry {
                         binding: 0,
-                        resource: BindingResource::TextureView(view_target.main_texture()),
+                        resource: BindingResource::TextureView(view_target.main_texture_view()),
                     }
                 } else {
                     BindGroupEntry {

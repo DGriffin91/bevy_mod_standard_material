@@ -3,7 +3,7 @@ use bevy::{
         MaterialPipeline, MaterialPipelineKey, StandardMaterialFlags, PBR_PREPASS_SHADER_HANDLE,
     },
     prelude::*,
-    reflect::TypeUuid,
+    reflect::{TypePath, TypeUuid},
     render::{
         extract_resource::ExtractResource,
         mesh::MeshVertexBufferLayout,
@@ -27,7 +27,7 @@ use crate::{
 /// <https://google.github.io/filament/Material%20Properties.pdf>.
 ///
 /// May be created directly from a [`Color`] or an [`Image`].
-#[derive(AsBindGroup, Debug, Clone, TypeUuid)]
+#[derive(AsBindGroup, Debug, Clone, TypeUuid, TypePath)]
 #[uuid = "e65799f2-923e-4548-8879-be574f9db988"]
 #[bind_group_data(CustomStandardMaterialKey)]
 #[uniform(0, CustomStandardMaterialUniform)]
