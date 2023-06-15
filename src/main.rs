@@ -5,12 +5,12 @@ mod bistro;
 pub mod camera_controller;
 mod copy_frame;
 mod debug_view;
+mod deferred_lighting_pass;
 mod helmet;
 mod image_window_auto_size;
 mod kitchen;
 mod load_sponza;
 mod path_trace;
-mod pbr_material;
 mod prepass_downsample;
 mod screen_space_passes;
 pub mod taa;
@@ -24,10 +24,10 @@ use bevy::{
     asset::ChangeWatcher,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     input::mouse::MouseMotion,
-    pbr::DirectionalLightShadowMap,
+    pbr::{DefaultOpaqueRendererMethod, DirectionalLightShadowMap, OpaqueRendererMethod},
     prelude::*,
     render::{
-        extract_resource::ExtractResourcePlugin,
+        extract_resource::{ExtractResource, ExtractResourcePlugin},
         settings::{WgpuFeatures, WgpuSettings},
         RenderPlugin,
     },
@@ -39,10 +39,11 @@ use bevy_mod_bvh::{DynamicTLAS, StaticTLAS};
 
 use copy_frame::CopyFramePlugin;
 use debug_view::DebugViewPlugin;
+use deferred_lighting_pass::CustomDeferredLightingPlugin;
 use kitchen::KitchenPlugin;
-use load_sponza::SponzaPlugin;
+
+use bevy::pbr::deferred::BypassPBRDeferredLightingPlugin;
 use path_trace::PathTracePlugin;
-use pbr_material::{load_blue_noise, swap_standard_material, BlueNoise, CustomStandardMaterial};
 use prepass_downsample::PrepassDownsample;
 use screen_space_passes::ScreenSpacePassesPlugin;
 use taa::TemporalAntiAliasPlugin;
@@ -55,7 +56,9 @@ fn main() {
         .set(WgpuFeatures::VERTEX_WRITABLE_STORAGE, true);
 
     let mut app = App::new();
-    app.insert_resource(Msaa::Off)
+    app.insert_resource(BypassPBRDeferredLightingPlugin)
+        .insert_resource(Msaa::Off)
+        .insert_resource(DefaultOpaqueRendererMethod(OpaqueRendererMethod::Deferred))
         // 2048 is default
         .insert_resource(DirectionalLightShadowMap { size: 2048 })
         .add_plugins(
@@ -73,6 +76,7 @@ fn main() {
                 })
                 .set(RenderPlugin { wgpu_settings }),
         )
+        .add_plugin(CustomDeferredLightingPlugin)
         .add_plugin(HanabiPlugin)
         //-----------
         //.add_plugin(BistroPlugin)
@@ -88,12 +92,12 @@ fn main() {
         .add_plugin(ScreenSpacePassesPlugin)
         .add_plugin(CoordinateTransformationsPlugin)
         .add_plugin(DebugViewPlugin)
-        .add_plugin(ExtractResourcePlugin::<BlueNoise>::default())
-        .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
-        .add_systems(Update, swap_standard_material)
+        //.add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
+        //.add_systems(Update, swap_standard_material)
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(TemporalAntiAliasPlugin)
+        .add_plugin(ExtractResourcePlugin::<BlueNoise>::default())
         .add_systems(Startup, load_blue_noise)
         .add_systems(Startup, no_empty_tlas)
         //.add_systems(Startup, setup_part)
@@ -148,6 +152,7 @@ fn move_directional_light(
     }
 }
 
+#[allow(dead_code)]
 fn setup_part(mut commands: Commands, mut effects: ResMut<Assets<bevy_hanabi::EffectAsset>>) {
     let mut gradient = bevy_hanabi::Gradient::new();
     gradient.add_key(0.0, Vec4::new(200.0, 50.0, 5000.0, 1.0));
@@ -188,4 +193,13 @@ fn setup_part(mut commands: Commands, mut effects: ResMut<Assets<bevy_hanabi::Ef
             ..Default::default()
         },
     ));
+}
+
+#[derive(Resource, ExtractResource, Clone)]
+pub struct BlueNoise(pub Handle<Image>);
+
+pub fn load_blue_noise(mut commands: Commands, ass: Res<AssetServer>) {
+    //commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64_s16.png")));
+    commands.insert_resource(BlueNoise(ass.load("textures/blue_noise_64x64_l64.dds")));
+    //commands.insert_resource(BlueNoise(ass.load("textures/stochastic_noise.ktx2")));
 }

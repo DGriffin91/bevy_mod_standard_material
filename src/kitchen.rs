@@ -1,17 +1,17 @@
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
+    copy_frame::CopyFrame,
     path_trace::TraceSettings,
-    pbr_material::CustomStandardMaterial,
     taa::TemporalAntiAliasBundle,
 };
 use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
         fxaa::Fxaa,
-        prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass},
+        prepass::{DeferredPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
-    pbr::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
 };
 
@@ -32,8 +32,8 @@ impl Plugin for KitchenPlugin {
 }
 
 pub fn fix_sky_brightness(
-    entites: Query<(&Handle<CustomStandardMaterial>, &Parent)>,
-    mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
+    entites: Query<(&Handle<StandardMaterial>, &Parent)>,
+    mut custom_materials: ResMut<Assets<StandardMaterial>>,
     mut fixed: Local<bool>,
     names: Query<&Name>,
 ) {
@@ -54,7 +54,7 @@ pub fn fix_sky_brightness(
 
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(SceneBundle {
-        scene: asset_server.load("large_models/kitchen_gltf_no_window_cover.gltf#Scene0"), //
+        scene: asset_server.load("large_models/kitchen_gltf_no_window_cover.gltf#Scene0"),
         ..default()
     });
 
@@ -131,8 +131,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             NormalPrepass,
             //DepthPrepass,
             //MotionVectorPrepass,
+            DeferredPrepass,
             Fxaa::default(),
             TemporalAntiAliasBundle::default(),
+            CopyFrame,
             // {
             //    settings: TemporalAntiAliasSettings { reset: true },
             //    jitter: TemporalJitter { offset: Vec2::ZERO },

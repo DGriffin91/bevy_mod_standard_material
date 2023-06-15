@@ -1,5 +1,5 @@
 use bevy::app::{App, Plugin};
-use bevy::asset::{load_internal_asset, HandleUntyped};
+
 use bevy::core::FrameCount;
 use bevy::core_pipeline::{
     core_3d::{self, CORE_3D},
@@ -15,8 +15,8 @@ use bevy::ecs::{
     world::{FromWorld, World},
 };
 use bevy::math::vec2;
-use bevy::prelude::{default, AssetServer, Assets, Handle};
-use bevy::reflect::{Reflect, TypeUuid};
+use bevy::prelude::{default, AssetServer, Handle};
+use bevy::reflect::Reflect;
 use bevy::render::render_resource::{TextureAspect, TextureViewDescriptor};
 use bevy::render::{
     camera::{ExtractedCamera, TemporalJitter},

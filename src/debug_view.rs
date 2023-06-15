@@ -23,7 +23,7 @@ use crate::{
         sampler_binding_entry, sampler_layout_entry, tex_view_entry, view_binding_entry,
         view_layout_entry,
     },
-    copy_frame::CopyFrameData,
+    copy_frame::PrevFrameTexture,
     get_tex_view_entry,
     prepass_downsample::PrepassDownsampleImage,
     resource,
@@ -66,6 +66,7 @@ struct DebugViewNode {
             &'static ViewUniformOffset,
             &'static ViewTarget,
             &'static ViewPrepassTextures,
+            &'static PrevFrameTexture,
         ),
         With<ExtractedView>,
     >,
@@ -97,7 +98,7 @@ impl Node for DebugViewNode {
         let view_entity = graph_context.view_entity();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_uniform_offset, view_target, prepass_textures, prev_frame_tex)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -127,7 +128,7 @@ impl Node for DebugViewNode {
             sampler_binding_entry(2, &debug_view_pipeline.sampler),
             get_tex_view_entry!(3, images, resource!(world, PrepassDownsampleImage).0),
             tex_view_entry(4, &post_process.source),
-            get_tex_view_entry!(5, images, resource!(world, CopyFrameData).image),
+            tex_view_entry(5, &prev_frame_tex.0.default_view),
             get_tex_view_entry!(6, images, resource!(world, ScreenSpacePasses).current_img),
             get_tex_view_entry!(7, images, resource!(world, ScreenSpacePasses).processed_img),
             get_tex_view_entry!(8, images, resource!(world, VoxelPassesTargetImage).current),

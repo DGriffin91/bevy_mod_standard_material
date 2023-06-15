@@ -12,6 +12,7 @@ pub trait FrameData {
     fn size(&self, width: u32, height: u32) -> (u32, u32);
 }
 
+#[allow(dead_code)]
 pub fn auto_resize_image<A: Asset + ImageUpdate, T: Resource + FrameData + TypeUuid>(
     frame_data: Res<T>,
     mut images: ResMut<Assets<Image>>,

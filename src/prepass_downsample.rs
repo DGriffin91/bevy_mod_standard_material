@@ -30,8 +30,7 @@ use crate::{
         prepass_get_bind_group_layout_entries, storage_tex_readwrite_layout_entry, tex_view_entry,
     },
     image,
-    image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
-    pbr_material::CustomStandardMaterial,
+    image_window_auto_size::{get_image_bytes_count, FrameData},
     resource,
 };
 
@@ -39,10 +38,10 @@ pub struct PrepassDownsample;
 impl Plugin for PrepassDownsample {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_image)
-            .add_systems(
-                Update,
-                auto_resize_image::<CustomStandardMaterial, PrepassDownsampleImage>,
-            )
+            //.add_systems(
+            //    Update,
+            //    auto_resize_image::<CustomStandardMaterial, PrepassDownsampleImage>,
+            //)
             .add_plugin(ExtractResourcePlugin::<PrepassDownsampleImage>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -57,9 +56,9 @@ impl Plugin for PrepassDownsample {
             .add_render_graph_edges(
                 core_3d::graph::NAME,
                 &[
-                    core_3d::graph::node::PREPASS,
+                    core_3d::graph::node::DEFERRED,
                     PrepassDownsampleNode::NAME,
-                    core_3d::graph::node::MAIN_OPAQUE_PASS,
+                    core_3d::graph::node::START_MAIN_PASS,
                 ],
             );
     }

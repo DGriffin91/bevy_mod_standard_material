@@ -3,49 +3,41 @@ use std::borrow::Cow;
 use bevy::{
     core_pipeline::core_3d,
     prelude::*,
-    reflect::TypeUuid,
     render::{
-        extract_resource::{ExtractResource, ExtractResourcePlugin},
-        render_asset::RenderAssets,
+        camera::ExtractedCamera,
+        extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
             BindGroupLayoutEntry, BindingResource, BindingType, CachedComputePipelineId,
-            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache,
-            Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, StorageTextureAccess,
+            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, PipelineCache, Sampler,
+            SamplerBindingType, SamplerDescriptor, ShaderStages, StorageTextureAccess,
             TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
             TextureUsages, TextureViewDescriptor, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
-        texture::ImageSampler,
+        texture::{BevyDefault, CachedTexture, TextureCache},
         view::{ExtractedView, ViewTarget},
-        RenderApp,
+        Render, RenderApp, RenderSet,
     },
 };
 
 const WORKGROUP_SIZE: u32 = 8;
 const MIP_LEVELS: u32 = 6;
 
-use crate::{
-    image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
-    pbr_material::CustomStandardMaterial,
-};
+#[derive(Component, ExtractComponent, Clone)]
+pub struct CopyFrame;
 
 pub struct CopyFramePlugin;
 impl Plugin for CopyFramePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_image)
-            .add_systems(
-                Update,
-                auto_resize_image::<CustomStandardMaterial, CopyFrameData>,
-            )
-            .add_plugin(ExtractResourcePlugin::<CopyFrameData>::default());
-
+        app.add_plugin(ExtractComponentPlugin::<CopyFrame>::default());
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
                     return;
                 };
 
         render_app
+            .add_systems(Render, prepare_textures.in_set(RenderSet::Prepare))
             .add_render_graph_node::<FrameCopyNode>(core_3d::graph::NAME, FrameCopyNode::NAME)
             .add_render_graph_edges(
                 core_3d::graph::NAME,
@@ -67,7 +59,7 @@ impl Plugin for CopyFramePlugin {
 }
 
 pub struct FrameCopyNode {
-    query: QueryState<&'static ViewTarget, With<ExtractedView>>,
+    query: QueryState<(&'static ViewTarget, &'static PrevFrameTexture), With<ExtractedView>>,
 }
 
 impl FromWorld for FrameCopyNode {
@@ -95,7 +87,7 @@ impl Node for FrameCopyNode {
     ) -> Result<(), NodeRunError> {
         let view_entity = graph_context.view_entity();
 
-        let Ok(view_target) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_target, prev_frame_tex)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -105,15 +97,7 @@ impl Node for FrameCopyNode {
         }
 
         let copy_frame_pipeline = world.resource::<CopyFramePipeline>();
-        let images = world.resource::<RenderAssets<Image>>();
         let pipeline_cache = world.resource::<PipelineCache>();
-        let Some(copy_frame_data) = world.get_resource::<CopyFrameData>() else {
-            return Ok(());
-        };
-
-        let Some(target_image) = images.get(&copy_frame_data.image) else {
-            return Ok(());
-        };
 
         let Some(pipeline) = pipeline_cache.get_compute_pipeline(copy_frame_pipeline.pipeline_id) else {
             return Ok(());
@@ -125,16 +109,19 @@ impl Node for FrameCopyNode {
 
         let mut views = Vec::new();
         for i in 0..MIP_LEVELS {
-            let view = target_image.texture.create_view(&TextureViewDescriptor {
-                label: Some("copy_frame_texture"),
-                format: Some(target_image.texture.format()),
-                dimension: Some(TextureViewDimension::D2),
-                aspect: TextureAspect::All,
-                base_mip_level: i,
-                mip_level_count: Some(1),
-                base_array_layer: 0,
-                array_layer_count: None,
-            });
+            let view = prev_frame_tex
+                .0
+                .texture
+                .create_view(&TextureViewDescriptor {
+                    label: Some("copy_frame_texture"),
+                    format: Some(prev_frame_tex.0.texture.format()),
+                    dimension: Some(TextureViewDimension::D2),
+                    aspect: TextureAspect::All,
+                    base_mip_level: i,
+                    mip_level_count: Some(1),
+                    base_array_layer: 0,
+                    array_layer_count: None,
+                });
             views.push(view);
         }
 
@@ -183,10 +170,12 @@ impl Node for FrameCopyNode {
             pass.set_bind_group(0, &bind_group, &[]);
 
             pass.set_pipeline(pipeline);
+            let w = prev_frame_tex.0.texture.width();
+            let h = prev_frame_tex.0.texture.height();
             pass.dispatch_workgroups(
                 // make sure we are >= target_image.size
-                (target_image.size.x as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
-                (target_image.size.y as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+                (w as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+                (h as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
                 1,
             );
         }
@@ -280,76 +269,48 @@ impl FromWorld for CopyFramePipeline {
     }
 }
 
-#[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
-#[uuid = "e485c7f9-a2c5-4433-ac2b-6e65d1779086"]
-pub struct CopyFrameData {
-    pub image: Handle<Image>,
-}
+#[derive(Component)]
+pub struct PrevFrameTexture(pub CachedTexture);
 
-impl FrameData for CopyFrameData {
-    fn image_h(&self) -> Handle<Image> {
-        self.image.clone()
-    }
-
-    fn size(&self, width: u32, height: u32) -> (u32, u32) {
-        (width, height)
-    }
-
-    fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>) {
-        let image = images.get_mut(&self.image).unwrap();
-        image.texture_descriptor.size = Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
-        image.data = vec![0; get_image_bytes_count(width, height, MIP_LEVELS, 2, 4)];
-    }
-}
-
-fn setup_image(
+fn prepare_textures(
     mut commands: Commands,
-    windows: Query<&Window>,
-    mut images: ResMut<Assets<Image>>,
+    mut texture_cache: ResMut<TextureCache>,
+    render_device: Res<RenderDevice>,
+    views: Query<(Entity, &ExtractedCamera, &ExtractedView), With<CopyFrame>>,
     msaa: Res<Msaa>,
 ) {
-    let window = windows.single();
-    let size = Extent3d {
-        width: window.physical_width(),
-        height: window.physical_height(),
-        depth_or_array_layers: 1,
-    };
+    for (entity, camera, view) in &views {
+        if let Some(physical_viewport_size) = camera.physical_viewport_size {
+            let mut texture_descriptor = TextureDescriptor {
+                label: None,
+                size: Extent3d {
+                    depth_or_array_layers: 1,
+                    width: physical_viewport_size.x,
+                    height: physical_viewport_size.y,
+                },
+                mip_level_count: MIP_LEVELS,
+                sample_count: match *msaa {
+                    Msaa::Off => 1,
+                    Msaa::Sample2 => 2,
+                    Msaa::Sample4 => 4,
+                    Msaa::Sample8 => 8,
+                },
+                dimension: TextureDimension::D2,
+                format: if view.hdr {
+                    ViewTarget::TEXTURE_FORMAT_HDR
+                } else {
+                    TextureFormat::bevy_default()
+                },
+                usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
+                view_formats: &[ViewTarget::TEXTURE_FORMAT_HDR],
+            };
 
-    let img = Image {
-        data: vec![
-            0;
-            get_image_bytes_count(size.width as u32, size.height as u32, MIP_LEVELS, 2, 4)
-        ],
-        texture_descriptor: TextureDescriptor {
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
-            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
-            view_formats: &[TextureFormat::Rgba16Float],
-            label: None,
-            size,
-            mip_level_count: MIP_LEVELS,
-            sample_count: match *msaa {
-                Msaa::Off => 1,
-                Msaa::Sample2 => 2,
-                Msaa::Sample4 => 4,
-                Msaa::Sample8 => 8,
-            },
-        },
-        sampler_descriptor: ImageSampler::Descriptor(SamplerDescriptor {
-            label: Some("copy_image_sampler_descriptor"),
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Linear,
-            mipmap_filter: FilterMode::Linear,
-            ..default()
-        }),
-        texture_view_descriptor: None,
-    };
+            texture_descriptor.label = Some("prev_frame_texture");
+            let prev_frame_texture = texture_cache.get(&render_device, texture_descriptor.clone());
 
-    commands.insert_resource(CopyFrameData {
-        image: images.add(img),
-    });
+            commands
+                .entity(entity)
+                .insert(PrevFrameTexture(prev_frame_texture));
+        }
+    }
 }

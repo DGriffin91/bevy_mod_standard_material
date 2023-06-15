@@ -9,17 +9,16 @@ use crate::{
         view_layout_entry,
     },
     binding_entry,
-    copy_frame::CopyFrameData,
+    copy_frame::PrevFrameTexture,
     get_tex_view_entry, image,
-    image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
-    pbr_material::{BlueNoise, CustomStandardMaterial},
+    image_window_auto_size::{get_image_bytes_count, FrameData},
     prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
     resource,
     screen_space_passes::ScreenSpacePasses,
+    BlueNoise,
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
-    diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
     math::vec3,
     prelude::*,
     reflect::TypeUuid,
@@ -63,10 +62,10 @@ impl Plugin for PathTracePlugin {
                 Update,
                 (set_meshes_tlas, update_settings).before(BVHSet::BlasTlas),
             )
-            .add_systems(
-                Update,
-                auto_resize_image::<CustomStandardMaterial, PathTraceImage>,
-            )
+            //.add_systems(
+            //    Update,
+            //    auto_resize_image::<CustomStandardMaterial, PathTraceImage>,
+            //)
             .add_plugin(BVHPlugin)
             .add_plugin(GPUDataPlugin)
             .add_plugin(ExtractComponentPlugin::<TraceSettings>::default())
@@ -86,7 +85,7 @@ impl Plugin for PathTracePlugin {
                 &[
                     PrepassDownsampleNode::NAME,
                     PathTraceNode::NAME,
-                    core_3d::graph::node::MAIN_OPAQUE_PASS,
+                    core_3d::graph::node::START_MAIN_PASS,
                 ],
             );
     }
@@ -106,6 +105,7 @@ pub struct PathTraceNode {
             &'static ViewUniformOffset,
             &'static ViewTarget,
             &'static ViewPrepassTextures,
+            &'static PrevFrameTexture,
         ),
         With<ExtractedView>,
     >,
@@ -139,7 +139,7 @@ impl Node for PathTraceNode {
         let gpu_mat_buffers = world.resource::<GpuMatBuffers>();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_uniform_offset, view_target, prepass_textures, prev_frame_tex)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -184,7 +184,7 @@ impl Node for PathTraceNode {
             tex_view_entry(19, &target_image.texture_view),
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
-            get_tex_view_entry!(2, images, resource!(world, CopyFrameData).image),
+            tex_view_entry(2, &prev_frame_tex.0.default_view),
             sampler_binding_entry(3, &path_trace_pipeline.sampler),
             binding_entry!(4, settings_uniforms.uniforms()),
             get_tex_view_entry!(12, images, resource!(world, BlueNoise).0),
@@ -395,8 +395,8 @@ pub struct GpuMatBuffers {
 pub fn extract_materials(
     static_instance_order: Res<StaticInstanceOrder>,
     dynamic_instance_order: Res<DynamicInstanceOrder>,
-    custom_materials: Extract<Res<Assets<CustomStandardMaterial>>>,
-    entites: Extract<Query<&Handle<CustomStandardMaterial>>>,
+    custom_materials: Extract<Res<Assets<StandardMaterial>>>,
+    entites: Extract<Query<&Handle<StandardMaterial>>>,
     mut gpu_mat_data: ResMut<GpuMatBuffers>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
@@ -422,8 +422,8 @@ pub fn extract_materials(
 
 fn collect_mats(
     instance_order: &Vec<Entity>,
-    entites: &Query<&Handle<CustomStandardMaterial>>,
-    custom_materials: &Assets<CustomStandardMaterial>,
+    entites: &Query<&Handle<StandardMaterial>>,
+    custom_materials: &Assets<StandardMaterial>,
 ) -> Vec<MaterialData> {
     let mut material_data = Vec::new();
     for e in instance_order.iter() {

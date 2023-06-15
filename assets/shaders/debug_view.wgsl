@@ -39,6 +39,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let frag_coord = in.position;
     let frame_col = textureSampleLevel(post_process_src, linear_sampler, in.uv, 0.0);
     let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, in.uv, 0.0);
+    let prev_frame = textureSampleLevel(prev_frame_tex, linear_sampler, in.uv, 0.0);
     let world_position = position_ndc_to_world(vec3(uv_to_ndc(in.uv), nor_depth.w));
     let V = normalize(world_position - view.world_position.xyz);
 
@@ -51,6 +52,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     if hit.t < 0.0 {
         col = frame_col.rgb;
     }
+    
 
     //return frame_col;
     //return vec4(vec3(last_world_cache.rgb), 1.0);

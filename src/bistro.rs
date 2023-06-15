@@ -1,7 +1,4 @@
-use crate::{
-    camera_controller::{CameraController, CameraControllerPlugin},
-    pbr_material::CustomStandardMaterial,
-};
+use crate::camera_controller::{CameraController, CameraControllerPlugin};
 use bevy::{
     core_pipeline::{
         bloom::BloomSettings, experimental::taa::TemporalAntiAliasBundle, prepass::NormalPrepass,
@@ -28,8 +25,8 @@ impl Plugin for BistroPlugin {
 }
 
 pub fn fix_sky_brightness(
-    entites: Query<(&Handle<CustomStandardMaterial>, &Parent)>,
-    mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
+    entites: Query<(&Handle<StandardMaterial>, &Parent)>,
+    mut custom_materials: ResMut<Assets<StandardMaterial>>,
     mut fixed: Local<bool>,
     names: Query<&Name>,
 ) {

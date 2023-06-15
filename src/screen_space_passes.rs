@@ -6,14 +6,14 @@ use crate::{
         prepass_get_bind_group_layout_entries, sampler_binding_entry, sampler_layout_entry,
         storage_tex_write_layout_entry, tex_view_entry, view_binding_entry, view_layout_entry,
     },
-    copy_frame::CopyFrameData,
+    copy_frame::PrevFrameTexture,
     get_tex_view_entry, image,
-    image_window_auto_size::{auto_resize_image, get_image_bytes_count, FrameData},
-    path_trace::PathTraceImage,
-    pbr_material::{BlueNoise, CustomStandardMaterial},
+    image_window_auto_size::{get_image_bytes_count, FrameData},
+    path_trace::{PathTraceImage, PathTraceNode},
     prepass_downsample::PrepassDownsampleImage,
     resource,
-    voxel_pass::{VoxelPassNode, VoxelPassesTargetImage},
+    voxel_pass::VoxelPassesTargetImage,
+    BlueNoise,
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
@@ -43,10 +43,10 @@ pub struct ScreenSpacePassesPlugin;
 impl Plugin for ScreenSpacePassesPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_image)
-            .add_systems(
-                Update,
-                auto_resize_image::<CustomStandardMaterial, ScreenSpacePasses>,
-            )
+            //.add_systems(
+            //    Update,
+            //    auto_resize_image::<CustomStandardMaterial, ScreenSpacePasses>,
+            //)
             .add_plugin(ExtractResourcePlugin::<ScreenSpacePasses>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -61,9 +61,9 @@ impl Plugin for ScreenSpacePassesPlugin {
             .add_render_graph_edges(
                 core_3d::graph::NAME,
                 &[
-                    VoxelPassNode::NAME,
+                    PathTraceNode::NAME,
                     ScreenSpacePassesNode::NAME,
-                    core_3d::graph::node::MAIN_OPAQUE_PASS,
+                    core_3d::graph::node::START_MAIN_PASS,
                 ],
             );
     }
@@ -83,6 +83,7 @@ pub struct ScreenSpacePassesNode {
             &'static ViewUniformOffset,
             &'static ViewTarget,
             &'static ViewPrepassTextures,
+            &'static PrevFrameTexture,
         ),
         With<ExtractedView>,
     >,
@@ -114,7 +115,7 @@ impl Node for ScreenSpacePassesNode {
         let view_entity = graph_context.view_entity();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_uniform_offset, view_target, prepass_textures, prev_frame_tex)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -152,7 +153,7 @@ impl Node for ScreenSpacePassesNode {
             tex_view_entry(10, &target_image.texture_view),
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
-            get_tex_view_entry!(2, images, resource!(world, CopyFrameData).image),
+            tex_view_entry(2, &prev_frame_tex.0.default_view),
             sampler_binding_entry(3, &pipeline.sampler),
             get_tex_view_entry!(4, images, resource!(world, BlueNoise).0),
             tex_view_entry(5, &depth_view),

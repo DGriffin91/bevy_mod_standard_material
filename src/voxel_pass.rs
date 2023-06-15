@@ -6,13 +6,13 @@ use crate::{
         prepass_get_bind_group_layout_entries, sampler_binding_entry, sampler_layout_entry,
         storage_tex_write_layout_entry, tex_view_entry, view_binding_entry, view_layout_entry,
     },
-    copy_frame::CopyFrameData,
+    copy_frame::PrevFrameTexture,
     get_tex_view_entry, image,
     image_window_auto_size::get_image_bytes_count,
-    pbr_material::BlueNoise,
     prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
     resource,
     screen_space_passes::ScreenSpacePasses,
+    BlueNoise,
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
@@ -56,7 +56,7 @@ impl Plugin for VoxelPassPlugin {
                 &[
                     PrepassDownsampleNode::NAME,
                     VoxelPassNode::NAME,
-                    core_3d::graph::node::MAIN_OPAQUE_PASS,
+                    core_3d::graph::node::START_MAIN_PASS,
                 ],
             );
     }
@@ -76,6 +76,7 @@ pub struct VoxelPassNode {
             &'static ViewUniformOffset,
             &'static ViewTarget,
             &'static ViewPrepassTextures,
+            &'static PrevFrameTexture,
         ),
         With<ExtractedView>,
     >,
@@ -107,7 +108,7 @@ impl Node for VoxelPassNode {
         let view_entity = graph_context.view_entity();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Ok((view_uniform_offset, view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_uniform_offset, view_target, prepass_textures, prev_frame_tex)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -141,7 +142,7 @@ impl Node for VoxelPassNode {
         let entries = vec![
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
-            get_tex_view_entry!(2, images, resource!(world, CopyFrameData).image),
+            tex_view_entry(2, &prev_frame_tex.0.default_view),
             sampler_binding_entry(3, &pipeline.sampler),
             get_tex_view_entry!(4, images, resource!(world, BlueNoise).0),
             tex_view_entry(5, &depth_view),
