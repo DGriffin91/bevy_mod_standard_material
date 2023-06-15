@@ -10,37 +10,34 @@ use crate::{
     },
     binding_entry,
     copy_frame::PrevFrameTexture,
-    get_tex_view_entry, image,
-    image_window_auto_size::{get_image_bytes_count, FrameData},
-    prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
+    get_tex_view_entry,
+    prepass_downsample::{PrepassDownsampleNode, PrepassDownsampleTexture},
     resource,
-    screen_space_passes::ScreenSpacePasses,
+    screen_space_passes::ScreenSpacePassesTextures,
     BlueNoise,
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
     math::vec3,
     prelude::*,
-    reflect::TypeUuid,
     render::{
         extract_component::{
             ComponentUniforms, ExtractComponent, ExtractComponentPlugin, UniformComponentPlugin,
         },
-        extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
             BindingResource, CachedComputePipelineId, ComputePassDescriptor,
-            ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache, Sampler,
+            ComputePipelineDescriptor, Extent3d, PipelineCache, Sampler,
             SamplerDescriptor, ShaderType, StorageBuffer, TextureAspect, TextureDescriptor,
             TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
             TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice, RenderQueue},
-        texture::ImageSampler,
+        texture::{TextureCache, CachedTexture},
         view::{ExtractedView, ViewTarget, ViewUniformOffset},
-        Extract, RenderApp,
+        Extract, RenderApp, camera::ExtractedCamera, Render, RenderSet,
     },
 };
 
@@ -54,29 +51,28 @@ use bevy_mod_bvh::{
 
 const WORKGROUP_SIZE: u32 = 8;
 const LAYERS: u32 = 3;
+
+#[derive(Component, ExtractComponent, Clone)]
+pub struct PathTrace;
 pub struct PathTracePlugin;
 impl Plugin for PathTracePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_image)
+        app.add_plugin(ExtractComponentPlugin::<PathTrace>::default())
             .add_systems(
                 Update,
                 (set_meshes_tlas, update_settings).before(BVHSet::BlasTlas),
             )
-            //.add_systems(
-            //    Update,
-            //    auto_resize_image::<CustomStandardMaterial, PathTraceImage>,
-            //)
             .add_plugin(BVHPlugin)
             .add_plugin(GPUDataPlugin)
             .add_plugin(ExtractComponentPlugin::<TraceSettings>::default())
-            .add_plugin(UniformComponentPlugin::<TraceSettings>::default())
-            .add_plugin(ExtractResourcePlugin::<PathTraceImage>::default());
+            .add_plugin(UniformComponentPlugin::<TraceSettings>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
         render_app
+        .add_systems(Render, prepare_textures.in_set(RenderSet::Prepare))
             .add_systems(ExtractSchedule, extract_materials.after(extract_gpu_data))
             .init_resource::<GpuMatBuffers>()
             .add_render_graph_node::<PathTraceNode>(core_3d::graph::NAME, PathTraceNode::NAME)
@@ -106,6 +102,9 @@ pub struct PathTraceNode {
             &'static ViewTarget,
             &'static ViewPrepassTextures,
             &'static PrevFrameTexture,
+            &'static PrepassDownsampleTexture,
+            &'static ScreenSpacePassesTextures,
+            &'static PathTraceTextures,
         ),
         With<ExtractedView>,
     >,
@@ -139,7 +138,13 @@ impl Node for PathTraceNode {
         let gpu_mat_buffers = world.resource::<GpuMatBuffers>();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Ok((view_uniform_offset, view_target, prepass_textures, prev_frame_tex)) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_uniform_offset, 
+                view_target, 
+                prepass_textures, 
+                prev_frame_tex, 
+                prepass_downsample_texture, 
+                screen_space_passes_textures,
+                path_trace_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -176,12 +181,10 @@ impl Node for PathTraceNode {
             ..default()
         });
 
-        let target_image = image!(images, &resource!(world, PathTraceImage).current_img);
-
         let mut entries = vec![
             // at the start so they are easy to swap for the blur
-            get_tex_view_entry!(18, images, resource!(world, PathTraceImage).processed_img),
-            tex_view_entry(19, &target_image.texture_view),
+            tex_view_entry(18, &path_trace_textures.processed_img.default_view),
+            tex_view_entry(19, &path_trace_textures.current_img.default_view),
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
             tex_view_entry(2, &prev_frame_tex.0.default_view),
@@ -193,16 +196,15 @@ impl Node for PathTraceNode {
             tex_view_entry(15, &depth_view),
             tex_view_entry(16, &normal_binding.default_view),
             tex_view_entry(17, &motion_vectors_binding.default_view),
-            get_tex_view_entry!(20, images, resource!(world, PrepassDownsampleImage).0),
-            get_tex_view_entry!(21, images, resource!(world, ScreenSpacePasses).current_img),
-            get_tex_view_entry!(
-                22,
-                images,
-                resource!(world, ScreenSpacePasses).processed_img
-            ),
+            tex_view_entry(20, &prepass_downsample_texture.0.default_view),
+            tex_view_entry(21, &screen_space_passes_textures.current_img.default_view),
+            tex_view_entry(22, &screen_space_passes_textures.processed_img.default_view),
         ];
 
         entries.extend(gpu_buffer_bind_group_entries);
+
+        let w = path_trace_textures.processed_img.texture.width();
+        let h = path_trace_textures.processed_img.texture.height();
 
         {
             let bind_group =
@@ -221,8 +223,8 @@ impl Node for PathTraceNode {
             pass.set_pipeline(pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
             pass.dispatch_workgroups(
-                target_image.size.x as u32 / WORKGROUP_SIZE,
-                target_image.size.y as u32 / WORKGROUP_SIZE,
+                w / WORKGROUP_SIZE,
+                h / WORKGROUP_SIZE,
                 1,
             );
         }
@@ -250,8 +252,8 @@ impl Node for PathTraceNode {
             pass.set_pipeline(blur_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
             pass.dispatch_workgroups(
-                target_image.size.x as u32 / WORKGROUP_SIZE,
-                target_image.size.y as u32 / WORKGROUP_SIZE,
+                w / WORKGROUP_SIZE,
+                h / WORKGROUP_SIZE,
                 1,
             );
         }
@@ -446,87 +448,49 @@ fn collect_mats(
     material_data
 }
 
-#[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
-#[uuid = "c235dff3-905c-4e88-9e0e-fb1c76de1322"]
-pub struct PathTraceImage {
-    pub current_img: Handle<Image>,
-    pub processed_img: Handle<Image>,
+#[derive(Component)]
+pub struct PathTraceTextures {
+    pub current_img: CachedTexture,
+    pub processed_img: CachedTexture,
 }
 
-fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResMut<Assets<Image>>) {
-    let window = windows.single();
+fn prepare_textures(
+    mut commands: Commands,
+    mut texture_cache: ResMut<TextureCache>,
+    render_device: Res<RenderDevice>,
+    views: Query<(Entity, &ExtractedCamera), With<PathTrace>>,
+) {
+    for (entity, camera) in &views {
+        if let Some(physical_viewport_size) = camera.physical_viewport_size {
+            let width = ((physical_viewport_size.x/ 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
+            let height = ((physical_viewport_size.y / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
+            let size = Extent3d {
+                width,
+                height,
+                depth_or_array_layers: LAYERS,
+            };
+            let mut texture_descriptor = TextureDescriptor {
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Rgba16Float,
+                usage: TextureUsages::STORAGE_BINDING
+                    | TextureUsages::TEXTURE_BINDING
+                    | TextureUsages::COPY_SRC,
+                view_formats: &[TextureFormat::Rgba16Float],
+                label: None,
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+            };
 
-    let width = ((window.physical_width() / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
-    let height = ((window.physical_height() / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
-    let size = Extent3d {
-        width,
-        height,
-        depth_or_array_layers: LAYERS,
-    };
-    let img = Image {
-        data: vec![0; get_image_bytes_count(size.width, size.height, 1, 2, 4) * LAYERS as usize],
-        texture_descriptor: TextureDescriptor {
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
-            usage: TextureUsages::STORAGE_BINDING
-                | TextureUsages::TEXTURE_BINDING
-                | TextureUsages::COPY_SRC,
-            view_formats: &[TextureFormat::Rgba16Float],
-            label: None,
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-        },
-        sampler_descriptor: ImageSampler::Descriptor(SamplerDescriptor {
-            label: Some("path_trace_sampler_descriptor"),
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Linear,
-            mipmap_filter: FilterMode::Linear,
-            ..default()
-        }),
-        texture_view_descriptor: Some(TextureViewDescriptor {
-            label: None,
-            format: Some(TextureFormat::Rgba16Float),
-            dimension: Some(TextureViewDimension::D2Array),
-            base_mip_level: 0,
-            mip_level_count: None,
-            base_array_layer: 0,
-            array_layer_count: Some(LAYERS),
-            aspect: TextureAspect::All,
-        }),
-    };
-    let img2 = img.clone();
+            texture_descriptor.label = Some("PathTraceTextures current_img");
+            let texture_1 = texture_cache.get(&render_device, texture_descriptor.clone());
+            texture_descriptor.label = Some("PathTraceTextures processed_img");
+            let texture_2 = texture_cache.get(&render_device, texture_descriptor.clone());
 
-    commands.insert_resource(PathTraceImage {
-        current_img: images.add(img),
-        processed_img: images.add(img2),
-    });
-}
-
-impl FrameData for PathTraceImage {
-    fn image_h(&self) -> Handle<Image> {
-        self.processed_img.clone()
-    }
-
-    fn size(&self, width: u32, height: u32) -> (u32, u32) {
-        // make sure the size is divisible by work group
-        (
-            ((width / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
-            ((height / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE,
-        )
-    }
-
-    fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>) {
-        let size: (u32, u32) = self.size(width, height);
-        let image = images.get_mut(&self.current_img).unwrap();
-        image.texture_descriptor.size = Extent3d {
-            width: size.0,
-            height: size.1,
-            depth_or_array_layers: LAYERS,
-        };
-        image.data = vec![0; get_image_bytes_count(size.0, size.1, 1, 2, 4) * LAYERS as usize];
-        let img2 = image.clone();
-        let image2 = images.get_mut(&self.processed_img).unwrap();
-        *image2 = img2;
+            commands.entity(entity).insert(PathTraceTextures {
+                current_img: texture_1,
+                processed_img: texture_2,
+            });
+        }
     }
 }

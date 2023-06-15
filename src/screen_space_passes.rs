@@ -2,25 +2,24 @@ use std::borrow::Cow;
 
 use crate::{
     bind_group_utils::{
-        globals_binding_entry, globals_layout_entry, image_layout_entry, linear_sampler,
+        globals_binding_entry, globals_layout_entry, image_layout_entry,
         prepass_get_bind_group_layout_entries, sampler_binding_entry, sampler_layout_entry,
         storage_tex_write_layout_entry, tex_view_entry, view_binding_entry, view_layout_entry,
     },
     copy_frame::PrevFrameTexture,
-    get_tex_view_entry, image,
-    image_window_auto_size::{get_image_bytes_count, FrameData},
-    path_trace::{PathTraceImage, PathTraceNode},
-    prepass_downsample::PrepassDownsampleImage,
+    get_tex_view_entry, 
+    path_trace::{PathTraceTextures, PathTraceNode},
+    prepass_downsample::PrepassDownsampleTexture,
     resource,
-    voxel_pass::VoxelPassesTargetImage,
+    voxel_pass::VoxelPassTextures,
     BlueNoise,
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
     prelude::*,
-    reflect::TypeUuid,
     render::{
-        extract_resource::{ExtractResource, ExtractResourcePlugin},
+        camera::ExtractedCamera,
+        extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
@@ -31,29 +30,28 @@ use bevy::{
             TextureUsages, TextureViewDescriptor, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
-        texture::ImageSampler,
+        texture::{CachedTexture, TextureCache},
         view::{ExtractedView, ViewTarget, ViewUniformOffset},
-        RenderApp,
+        Render, RenderApp, RenderSet,
     },
 };
 
 const WORKGROUP_SIZE: u32 = 8;
 const LAYERS: u32 = 8;
+
+#[derive(Component, ExtractComponent, Clone)]
+pub struct ScreenSpacePasses;
 pub struct ScreenSpacePassesPlugin;
 impl Plugin for ScreenSpacePassesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_image)
-            //.add_systems(
-            //    Update,
-            //    auto_resize_image::<CustomStandardMaterial, ScreenSpacePasses>,
-            //)
-            .add_plugin(ExtractResourcePlugin::<ScreenSpacePasses>::default());
+        app.add_plugin(ExtractComponentPlugin::<ScreenSpacePasses>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
         render_app
+            .add_systems(Render, prepare_textures.in_set(RenderSet::Prepare))
             .add_render_graph_node::<ScreenSpacePassesNode>(
                 core_3d::graph::NAME,
                 ScreenSpacePassesNode::NAME,
@@ -84,6 +82,10 @@ pub struct ScreenSpacePassesNode {
             &'static ViewTarget,
             &'static ViewPrepassTextures,
             &'static PrevFrameTexture,
+            &'static PrepassDownsampleTexture,
+            &'static VoxelPassTextures,
+            &'static ScreenSpacePassesTextures,
+            &'static PathTraceTextures,
         ),
         With<ExtractedView>,
     >,
@@ -115,7 +117,15 @@ impl Node for ScreenSpacePassesNode {
         let view_entity = graph_context.view_entity();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Ok((view_uniform_offset, view_target, prepass_textures, prev_frame_tex)) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_uniform_offset, 
+                view_target, 
+                prepass_textures, 
+                prev_frame_tex, 
+                prepass_downsample_texture, 
+                voxel_pass_textures, 
+                screen_space_passes_textures,
+                path_trace_textures
+        )) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -135,8 +145,6 @@ impl Node for ScreenSpacePassesNode {
             return Ok(());
         };
 
-        let target_image = image!(images, &resource!(world, ScreenSpacePasses).current_img);
-
         let depth_binding = prepass_textures.depth.as_ref().unwrap();
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
@@ -149,8 +157,8 @@ impl Node for ScreenSpacePassesNode {
 
         let mut entries = vec![
             // at the start so they are easy to swap for the blur
-            get_tex_view_entry!(9, images, resource!(world, ScreenSpacePasses).processed_img),
-            tex_view_entry(10, &target_image.texture_view),
+            tex_view_entry(9, &screen_space_passes_textures.processed_img.default_view),
+            tex_view_entry(10, &screen_space_passes_textures.current_img.default_view),
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
             tex_view_entry(2, &prev_frame_tex.0.default_view),
@@ -159,10 +167,13 @@ impl Node for ScreenSpacePassesNode {
             tex_view_entry(5, &depth_view),
             tex_view_entry(6, &normal_binding.default_view),
             tex_view_entry(7, &motion_vectors_binding.default_view),
-            get_tex_view_entry!(8, images, resource!(world, PrepassDownsampleImage).0),
-            get_tex_view_entry!(11, images, resource!(world, VoxelPassesTargetImage).current),
-            get_tex_view_entry!(12, images, resource!(world, PathTraceImage).processed_img),
+            tex_view_entry(8, &prepass_downsample_texture.0.default_view),
+            tex_view_entry(11, &voxel_pass_textures.write.default_view),
+            tex_view_entry(12, &path_trace_textures.processed_img.default_view),
         ];
+
+        let w = screen_space_passes_textures.processed_img.texture.width();
+        let h = screen_space_passes_textures.processed_img.texture.height();
 
         {
             let bind_group =
@@ -180,11 +191,7 @@ impl Node for ScreenSpacePassesNode {
 
             pass.set_pipeline(update_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
-            pass.dispatch_workgroups(
-                target_image.size.x as u32 / WORKGROUP_SIZE,
-                target_image.size.y as u32 / WORKGROUP_SIZE,
-                1,
-            );
+            pass.dispatch_workgroups(w / WORKGROUP_SIZE, h / WORKGROUP_SIZE, 1);
         }
 
         {
@@ -209,11 +216,7 @@ impl Node for ScreenSpacePassesNode {
 
             pass.set_pipeline(blur_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
-            pass.dispatch_workgroups(
-                target_image.size.x as u32 / WORKGROUP_SIZE,
-                target_image.size.y as u32 / WORKGROUP_SIZE,
-                1,
-            );
+            pass.dispatch_workgroups(w / WORKGROUP_SIZE, h / WORKGROUP_SIZE, 1);
         }
 
         Ok(())
@@ -298,79 +301,59 @@ impl FromWorld for TracePipeline {
     }
 }
 
-#[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
-#[uuid = "c4fe681e-4dd8-47e5-8039-e9678ad4d717"]
-pub struct ScreenSpacePasses {
-    pub current_img: Handle<Image>,
-    pub processed_img: Handle<Image>,
+#[derive(Component)]
+pub struct ScreenSpacePassesTextures {
+    pub current_img: CachedTexture,
+    pub processed_img: CachedTexture,
 }
 
-fn setup_image(mut commands: Commands, windows: Query<&Window>, mut images: ResMut<Assets<Image>>) {
-    let window = windows.single();
+fn prepare_textures(
+    mut commands: Commands,
+    mut texture_cache: ResMut<TextureCache>,
+    render_device: Res<RenderDevice>,
+    views: Query<(Entity, &ExtractedCamera), With<ScreenSpacePasses>>,
+) {
+    for (entity, camera) in &views {
+        if let Some(physical_viewport_size) = camera.physical_viewport_size {
+            let size = Extent3d {
+                width: physical_viewport_size.x,
+                height: physical_viewport_size.y,
+                depth_or_array_layers: LAYERS,
+            };
+            let mut texture_descriptor = TextureDescriptor {
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Rgba16Float,
+                usage: TextureUsages::STORAGE_BINDING
+                    | TextureUsages::TEXTURE_BINDING
+                    | TextureUsages::COPY_SRC,
+                view_formats: &[TextureFormat::Rgba16Float],
+                label: None,
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+            };
 
-    let width = window.physical_width();
-    let height = window.physical_height();
+            texture_descriptor.label = Some("ScreenSpacePassesTextures current_img");
+            let texture_1 = texture_cache.get(&render_device, texture_descriptor.clone());
+            texture_descriptor.label = Some("ScreenSpacePassesTextures processed_img");
+            let texture_2 = texture_cache.get(&render_device, texture_descriptor.clone());
 
-    let size = Extent3d {
-        width,
-        height,
-        depth_or_array_layers: LAYERS,
-    };
-    let img = Image {
-        data: vec![0; get_image_bytes_count(size.width, size.height, 1, 2, 4) * LAYERS as usize],
-        texture_descriptor: TextureDescriptor {
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
-            usage: TextureUsages::STORAGE_BINDING
-                | TextureUsages::TEXTURE_BINDING
-                | TextureUsages::COPY_SRC,
-            view_formats: &[TextureFormat::Rgba16Float],
-            label: None,
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-        },
-        sampler_descriptor: ImageSampler::Descriptor(linear_sampler()),
-        texture_view_descriptor: Some(TextureViewDescriptor {
-            label: None,
-            format: Some(TextureFormat::Rgba16Float),
-            dimension: Some(TextureViewDimension::D2Array),
-            base_mip_level: 0,
-            mip_level_count: None,
-            base_array_layer: 0,
-            array_layer_count: Some(LAYERS),
-            aspect: TextureAspect::All,
-        }),
-    };
-    let img2 = img.clone();
-
-    commands.insert_resource(ScreenSpacePasses {
-        current_img: images.add(img),
-        processed_img: images.add(img2),
-    });
-}
-
-impl FrameData for ScreenSpacePasses {
-    fn image_h(&self) -> Handle<Image> {
-        self.processed_img.clone()
-    }
-
-    fn size(&self, width: u32, height: u32) -> (u32, u32) {
-        // make sure the size is divisible by work group
-        (width, height)
-    }
-
-    fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>) {
-        let size: (u32, u32) = self.size(width, height);
-        let image = images.get_mut(&self.current_img).unwrap();
-        image.texture_descriptor.size = Extent3d {
-            width: size.0,
-            height: size.1,
-            depth_or_array_layers: LAYERS,
-        };
-        image.data = vec![0; get_image_bytes_count(size.0, size.1, 1, 2, 4) * LAYERS as usize];
-        let img2 = image.clone();
-        let image2 = images.get_mut(&self.processed_img).unwrap();
-        *image2 = img2;
+            commands.entity(entity).insert(ScreenSpacePassesTextures {
+                current_img: texture_1,
+                processed_img: texture_2,
+            });
+        }
     }
 }
+/*
+TextureViewDescriptor {
+    label: None,
+    format: Some(TextureFormat::Rgba16Float),
+    dimension: Some(TextureViewDimension::D2Array),
+    base_mip_level: 0,
+    mip_level_count: None,
+    base_array_layer: 0,
+    array_layer_count: Some(LAYERS),
+    aspect: TextureAspect::All,
+}
+*/

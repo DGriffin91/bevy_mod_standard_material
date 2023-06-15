@@ -3,52 +3,45 @@ use std::borrow::Cow;
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
     prelude::*,
-    reflect::TypeUuid,
     render::{
-        extract_resource::{ExtractResource, ExtractResourcePlugin},
-        render_asset::RenderAssets,
+        camera::ExtractedCamera,
+        extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
             BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
             BindingResource, CachedComputePipelineId, ComputePassDescriptor,
-            ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache, SamplerDescriptor,
-            TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
-            TextureViewDescriptor, TextureViewDimension,
+            ComputePipelineDescriptor, Extent3d, PipelineCache, TextureAspect, TextureDescriptor,
+            TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+            TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
-        texture::ImageSampler,
+        texture::{CachedTexture, TextureCache},
         view::{ExtractedView, ViewTarget},
-        RenderApp,
+        Render, RenderApp, RenderSet,
     },
 };
 
 const WORKGROUP_SIZE: u32 = 8;
 const MIP_LEVELS: u32 = 4;
 
-use crate::{
-    bind_group_utils::{
-        prepass_get_bind_group_layout_entries, storage_tex_readwrite_layout_entry, tex_view_entry,
-    },
-    image,
-    image_window_auto_size::{get_image_bytes_count, FrameData},
-    resource,
+use crate::bind_group_utils::{
+    prepass_get_bind_group_layout_entries, storage_tex_readwrite_layout_entry, tex_view_entry,
 };
 
+#[derive(Component, ExtractComponent, Clone)]
 pub struct PrepassDownsample;
-impl Plugin for PrepassDownsample {
+
+pub struct PrepassDownsamplePlugin;
+impl Plugin for PrepassDownsamplePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_image)
-            //.add_systems(
-            //    Update,
-            //    auto_resize_image::<CustomStandardMaterial, PrepassDownsampleImage>,
-            //)
-            .add_plugin(ExtractResourcePlugin::<PrepassDownsampleImage>::default());
+        app.add_plugin(ExtractComponentPlugin::<PrepassDownsample>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
                     return;
                 };
 
         render_app
+            .add_systems(Render, prepare_textures.in_set(RenderSet::Prepare))
             .add_render_graph_node::<PrepassDownsampleNode>(
                 core_3d::graph::NAME,
                 PrepassDownsampleNode::NAME,
@@ -73,7 +66,14 @@ impl Plugin for PrepassDownsample {
 }
 
 pub struct PrepassDownsampleNode {
-    query: QueryState<(&'static ViewTarget, &'static ViewPrepassTextures), With<ExtractedView>>,
+    query: QueryState<
+        (
+            &'static ViewTarget,
+            &'static ViewPrepassTextures,
+            &'static PrepassDownsampleTexture,
+        ),
+        With<ExtractedView>,
+    >,
 }
 
 impl FromWorld for PrepassDownsampleNode {
@@ -101,7 +101,9 @@ impl Node for PrepassDownsampleNode {
     ) -> Result<(), NodeRunError> {
         let view_entity = graph_context.view_entity();
 
-        let Ok((view_target, prepass_textures)) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_target, 
+                prepass_textures, 
+                prepass_downsample_texture)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -111,7 +113,6 @@ impl Node for PrepassDownsampleNode {
         }
 
         let copy_frame_pipeline = world.resource::<PrepassDownsamplePipeline>();
-        let images = world.resource::<RenderAssets<Image>>();
         let pipeline_cache = world.resource::<PipelineCache>();
 
         let Some(pipeline) = pipeline_cache.get_compute_pipeline(copy_frame_pipeline.pipeline_id) else {
@@ -121,8 +122,6 @@ impl Node for PrepassDownsampleNode {
         let depth_binding = prepass_textures.depth.as_ref().unwrap();
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
-
-        let target_image = image!(images, &resource!(world, PrepassDownsampleImage).0);
 
         let depth_view = depth_binding.texture.create_view(&TextureViewDescriptor {
             label: Some("prepass_depth"),
@@ -137,16 +136,19 @@ impl Node for PrepassDownsampleNode {
 
         let mut views = Vec::new();
         for i in 0..MIP_LEVELS {
-            let view = target_image.texture.create_view(&TextureViewDescriptor {
-                label: Some("copy_frame_texture"),
-                format: Some(target_image.texture.format()),
-                dimension: Some(TextureViewDimension::D2),
-                aspect: TextureAspect::All,
-                base_mip_level: i,
-                mip_level_count: Some(1),
-                base_array_layer: 0,
-                array_layer_count: None,
-            });
+            let view = prepass_downsample_texture
+                .0
+                .texture
+                .create_view(&TextureViewDescriptor {
+                    label: Some("copy_frame_texture"),
+                    format: Some(prepass_downsample_texture.0.texture.format()),
+                    dimension: Some(TextureViewDimension::D2),
+                    aspect: TextureAspect::All,
+                    base_mip_level: i,
+                    mip_level_count: Some(1),
+                    base_array_layer: 0,
+                    array_layer_count: None,
+                });
             views.push(view);
         }
         for (i, view) in views.iter().enumerate() {
@@ -172,10 +174,12 @@ impl Node for PrepassDownsampleNode {
         pass.set_bind_group(0, &bind_group, &[]);
 
         pass.set_pipeline(pipeline);
+        let w = prepass_downsample_texture.0.texture.width();
+        let h = prepass_downsample_texture.0.texture.height();
         pass.dispatch_workgroups(
             // make sure we are >= target_image.size
-            (target_image.size.x as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
-            (target_image.size.y as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+            (w as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+            (h as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
             1,
         );
 
@@ -234,73 +238,38 @@ impl FromWorld for PrepassDownsamplePipeline {
     }
 }
 
-#[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
-#[uuid = "8f2f1f50-98e2-43cf-a9b0-2345d38f0a9a"]
-pub struct PrepassDownsampleImage(pub Handle<Image>);
+#[derive(Component, Clone)]
+pub struct PrepassDownsampleTexture(pub CachedTexture);
 
-fn setup_image(
+fn prepare_textures(
     mut commands: Commands,
-    windows: Query<&Window>,
-    mut images: ResMut<Assets<Image>>,
-    msaa: Res<Msaa>,
+    mut texture_cache: ResMut<TextureCache>,
+    render_device: Res<RenderDevice>,
+    views: Query<(Entity, &ExtractedCamera), With<PrepassDownsample>>,
 ) {
-    let window = windows.single();
-    let size = Extent3d {
-        width: window.physical_width(),
-        height: window.physical_height(),
-        depth_or_array_layers: 1,
-    };
+    for (entity, camera) in &views {
+        if let Some(physical_viewport_size) = camera.physical_viewport_size {
+            let mut texture_descriptor = TextureDescriptor {
+                label: None,
+                size: Extent3d {
+                    depth_or_array_layers: 1,
+                    width: physical_viewport_size.x,
+                    height: physical_viewport_size.y,
+                },
+                mip_level_count: MIP_LEVELS,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Rgba32Float,
+                usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
+                view_formats: &[TextureFormat::Rgba32Float],
+            };
 
-    let img = Image {
-        data: vec![
-            0;
-            get_image_bytes_count(size.width as u32, size.height as u32, MIP_LEVELS, 4, 4)
-        ],
-        texture_descriptor: TextureDescriptor {
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba32Float,
-            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
-            view_formats: &[TextureFormat::Rgba32Float],
-            label: None,
-            size,
-            mip_level_count: MIP_LEVELS,
-            sample_count: match *msaa {
-                Msaa::Off => 1,
-                Msaa::Sample2 => 2,
-                Msaa::Sample4 => 4,
-                Msaa::Sample8 => 8,
-            },
-        },
-        sampler_descriptor: ImageSampler::Descriptor(SamplerDescriptor {
-            label: Some("copy_image_sampler_descriptor"),
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Linear,
-            mipmap_filter: FilterMode::Linear,
-            ..default()
-        }),
-        texture_view_descriptor: None,
-    };
+            texture_descriptor.label = Some("PrepassDownsampleTexture");
+            let prev_frame_texture = texture_cache.get(&render_device, texture_descriptor.clone());
 
-    commands.insert_resource(PrepassDownsampleImage(images.add(img)));
-}
-
-impl FrameData for PrepassDownsampleImage {
-    fn image_h(&self) -> Handle<Image> {
-        self.0.clone()
-    }
-
-    fn size(&self, width: u32, height: u32) -> (u32, u32) {
-        (width, height)
-    }
-
-    fn resize(&self, width: u32, height: u32, images: &mut Assets<Image>) {
-        let mut image = images.get_mut(&self.0).unwrap();
-        image.texture_descriptor.size = Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
-        image.data = vec![0; get_image_bytes_count(width, height, MIP_LEVELS, 4, 4)];
-        //self.0 = images.add(image);
+            commands
+                .entity(entity)
+                .insert(PrepassDownsampleTexture(prev_frame_texture));
+        }
     }
 }

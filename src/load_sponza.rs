@@ -3,7 +3,10 @@ use std::f32::consts::PI;
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
     copy_frame::CopyFrame,
-    path_trace::TraceSettings,
+    path_trace::{PathTrace, TraceSettings},
+    prepass_downsample::PrepassDownsample,
+    screen_space_passes::ScreenSpacePasses,
+    voxel_pass::VoxelPass,
 };
 use bevy::{
     core_pipeline::{
@@ -212,6 +215,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             },
             Fxaa::default(),
             CopyFrame,
+            PrepassDownsample,
+            VoxelPass,
+            ScreenSpacePasses,
+            PathTrace,
         ))
         .insert(TraceSettings { frame: 0, fps: 0.0 });
 }

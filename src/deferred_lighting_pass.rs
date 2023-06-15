@@ -38,7 +38,7 @@ use bevy::pbr::{
     MAX_DIRECTIONAL_LIGHTS,
 };
 
-use crate::screen_space_passes::ScreenSpacePasses;
+use crate::screen_space_passes::ScreenSpacePassesTextures;
 
 pub struct CustomDeferredLightingPlugin;
 
@@ -405,6 +405,7 @@ pub fn queue_deferred_lighting_bind_groups(
             Option<&ViewPrepassTextures>,
             Option<&EnvironmentMapLight>,
             &Tonemapping,
+            &ScreenSpacePassesTextures,
         ),
         With<DeferredPrepass>,
     >,
@@ -413,7 +414,6 @@ pub fn queue_deferred_lighting_bind_groups(
     msaa: Res<Msaa>,
     globals_buffer: Res<GlobalsBuffer>,
     tonemapping_luts: Res<TonemappingLuts>,
-    screen_space_passes: Res<ScreenSpacePasses>,
     differed_lighting_layout: Res<CustomDeferredLightingLayout>,
 ) {
     let (mut fallback_images, fallback_cubemap) = fallbacks;
@@ -437,6 +437,7 @@ pub fn queue_deferred_lighting_bind_groups(
             prepass_textures,
             environment_map,
             tonemapping,
+            screen_space_passes_textures,
         ) in &views
         {
             let mut entries = vec![
@@ -511,11 +512,11 @@ pub fn queue_deferred_lighting_bind_groups(
                 entries.extend_from_slice(&prepass_bindings.get_entries([16, 17, 18, 19]));
             }
 
-            let screen_space_pass = images.get(&screen_space_passes.current_img).unwrap();
-
             entries.push(BindGroupEntry {
                 binding: 20,
-                resource: BindingResource::TextureView(&screen_space_pass.texture_view),
+                resource: BindingResource::TextureView(
+                    &screen_space_passes_textures.current_img.default_view,
+                ),
             });
 
             let view_bind_group = render_device.create_bind_group(&BindGroupDescriptor {

@@ -2,11 +2,9 @@ use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
     prelude::*,
     render::{
-        render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
-            BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-            BindingResource, CachedRenderPipelineId, Operations, PipelineCache,
+            BindGroupDescriptor, BindGroupLayout, BindGroupLayoutDescriptor, CachedRenderPipelineId, Operations, PipelineCache,
             RenderPassColorAttachment, RenderPassDescriptor, Sampler, TextureAspect,
             TextureViewDescriptor, TextureViewDimension,
         },
@@ -24,11 +22,9 @@ use crate::{
         view_layout_entry,
     },
     copy_frame::PrevFrameTexture,
-    get_tex_view_entry,
-    prepass_downsample::PrepassDownsampleImage,
-    resource,
-    screen_space_passes::ScreenSpacePasses,
-    voxel_pass::VoxelPassesTargetImage,
+    prepass_downsample::PrepassDownsampleTexture,
+    screen_space_passes::ScreenSpacePassesTextures,
+    voxel_pass::VoxelPassTextures,
 };
 
 pub struct DebugViewPlugin;
@@ -67,6 +63,9 @@ struct DebugViewNode {
             &'static ViewTarget,
             &'static ViewPrepassTextures,
             &'static PrevFrameTexture,
+            &'static PrepassDownsampleTexture,
+            &'static VoxelPassTextures,
+            &'static ScreenSpacePassesTextures,
         ),
         With<ExtractedView>,
     >,
@@ -96,9 +95,15 @@ impl Node for DebugViewNode {
         world: &World,
     ) -> Result<(), NodeRunError> {
         let view_entity = graph_context.view_entity();
-        let images = world.resource::<RenderAssets<Image>>();
 
-        let Ok((view_uniform_offset, view_target, prepass_textures, prev_frame_tex)) = self.query.get_manual(world, view_entity) else {
+        let Ok((
+            view_uniform_offset, 
+            view_target, 
+            prepass_textures, 
+            prev_frame_tex, 
+            prepass_downsample_texture, 
+            voxel_pass_textures,
+            screen_space_passes_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -126,12 +131,12 @@ impl Node for DebugViewNode {
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
             sampler_binding_entry(2, &debug_view_pipeline.sampler),
-            get_tex_view_entry!(3, images, resource!(world, PrepassDownsampleImage).0),
+            tex_view_entry(3, &prepass_downsample_texture.0.default_view),
             tex_view_entry(4, &post_process.source),
             tex_view_entry(5, &prev_frame_tex.0.default_view),
-            get_tex_view_entry!(6, images, resource!(world, ScreenSpacePasses).current_img),
-            get_tex_view_entry!(7, images, resource!(world, ScreenSpacePasses).processed_img),
-            get_tex_view_entry!(8, images, resource!(world, VoxelPassesTargetImage).current),
+            tex_view_entry(6, &screen_space_passes_textures.processed_img.default_view),
+            tex_view_entry(7, &screen_space_passes_textures.current_img.default_view),
+            tex_view_entry(8, &voxel_pass_textures.write.default_view),
             tex_view_entry(9, &depth_view),
             tex_view_entry(10, &normal_binding.default_view),
             tex_view_entry(11, &motion_vectors_binding.default_view),

@@ -277,7 +277,6 @@ fn prepare_textures(
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     views: Query<(Entity, &ExtractedCamera, &ExtractedView), With<CopyFrame>>,
-    msaa: Res<Msaa>,
 ) {
     for (entity, camera, view) in &views {
         if let Some(physical_viewport_size) = camera.physical_viewport_size {
@@ -289,12 +288,7 @@ fn prepare_textures(
                     height: physical_viewport_size.y,
                 },
                 mip_level_count: MIP_LEVELS,
-                sample_count: match *msaa {
-                    Msaa::Off => 1,
-                    Msaa::Sample2 => 2,
-                    Msaa::Sample4 => 4,
-                    Msaa::Sample8 => 8,
-                },
+                sample_count: 1,
                 dimension: TextureDimension::D2,
                 format: if view.hdr {
                     ViewTarget::TEXTURE_FORMAT_HDR

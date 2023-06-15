@@ -7,7 +7,6 @@ mod copy_frame;
 mod debug_view;
 mod deferred_lighting_pass;
 mod helmet;
-mod image_window_auto_size;
 mod kitchen;
 mod load_sponza;
 mod path_trace;
@@ -44,7 +43,7 @@ use kitchen::KitchenPlugin;
 
 use bevy::pbr::deferred::BypassPBRDeferredLightingPlugin;
 use path_trace::PathTracePlugin;
-use prepass_downsample::PrepassDownsample;
+use prepass_downsample::PrepassDownsamplePlugin;
 use screen_space_passes::ScreenSpacePassesPlugin;
 use taa::TemporalAntiAliasPlugin;
 use voxel_pass::VoxelPassPlugin;
@@ -86,7 +85,7 @@ fn main() {
         //.add_plugin(SphereScenePlugin)
         //-----------
         .add_plugin(CopyFramePlugin)
-        .add_plugin(PrepassDownsample)
+        .add_plugin(PrepassDownsamplePlugin)
         .add_plugin(VoxelPassPlugin)
         .add_plugin(PathTracePlugin)
         .add_plugin(ScreenSpacePassesPlugin)

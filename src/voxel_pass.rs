@@ -7,19 +7,19 @@ use crate::{
         storage_tex_write_layout_entry, tex_view_entry, view_binding_entry, view_layout_entry,
     },
     copy_frame::PrevFrameTexture,
-    get_tex_view_entry, image,
-    image_window_auto_size::get_image_bytes_count,
-    prepass_downsample::{PrepassDownsampleImage, PrepassDownsampleNode},
+    get_tex_view_entry,
+    prepass_downsample::{PrepassDownsampleNode, PrepassDownsampleTexture},
     resource,
-    screen_space_passes::ScreenSpacePasses,
+    screen_space_passes::ScreenSpacePassesTextures,
     BlueNoise,
 };
 use bevy::{
+    core::FrameCount,
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
     prelude::*,
-    reflect::TypeUuid,
     render::{
-        extract_resource::{ExtractResource, ExtractResourcePlugin},
+        camera::ExtractedCamera,
+        extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_asset::RenderAssets,
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
@@ -30,26 +30,29 @@ use bevy::{
             TextureUsages, TextureViewDescriptor, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
-        texture::ImageSampler,
+        texture::{CachedTexture, TextureCache},
         view::{ExtractedView, ViewTarget, ViewUniformOffset},
-        RenderApp,
+        Render, RenderApp, RenderSet,
     },
 };
 
 //const WORKGROUP_SIZE: u32 = 8;
 const SIZE: u32 = 128;
 
+#[derive(Component, ExtractComponent, Clone)]
+pub struct VoxelPass;
+
 pub struct VoxelPassPlugin;
 impl Plugin for VoxelPassPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_image)
-            .add_plugin(ExtractResourcePlugin::<VoxelPassesTargetImage>::default());
+        app.add_plugin(ExtractComponentPlugin::<VoxelPass>::default());
 
         let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
         render_app
+            .add_systems(Render, prepare_textures.in_set(RenderSet::Prepare))
             .add_render_graph_node::<VoxelPassNode>(core_3d::graph::NAME, VoxelPassNode::NAME)
             .add_render_graph_edges(
                 core_3d::graph::NAME,
@@ -77,6 +80,9 @@ pub struct VoxelPassNode {
             &'static ViewTarget,
             &'static ViewPrepassTextures,
             &'static PrevFrameTexture,
+            &'static PrepassDownsampleTexture,
+            &'static VoxelPassTextures,
+            &'static ScreenSpacePassesTextures,
         ),
         With<ExtractedView>,
     >,
@@ -108,7 +114,13 @@ impl Node for VoxelPassNode {
         let view_entity = graph_context.view_entity();
         let images = world.resource::<RenderAssets<Image>>();
 
-        let Ok((view_uniform_offset, view_target, prepass_textures, prev_frame_tex)) = self.query.get_manual(world, view_entity) else {
+        let Ok((view_uniform_offset, 
+            view_target, 
+            prepass_textures, 
+            prev_frame_tex, 
+            prepass_downsample_texture, 
+            voxel_pass_textures, 
+            screen_space_passes_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -136,9 +148,6 @@ impl Node for VoxelPassNode {
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
 
-        let prev_voxel_image = image!(images, &resource!(world, VoxelPassesTargetImage).prev);
-        let current_voxel_image = image!(images, &resource!(world, VoxelPassesTargetImage).current);
-
         let entries = vec![
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
@@ -148,10 +157,10 @@ impl Node for VoxelPassNode {
             tex_view_entry(5, &depth_view),
             tex_view_entry(6, &normal_binding.default_view),
             tex_view_entry(7, &motion_vectors_binding.default_view),
-            get_tex_view_entry!(8, images, resource!(world, PrepassDownsampleImage).0),
-            get_tex_view_entry!(9, images, resource!(world, ScreenSpacePasses).processed_img),
-            tex_view_entry(10, &prev_voxel_image.texture_view),
-            tex_view_entry(11, &current_voxel_image.texture_view),
+            tex_view_entry(8, &prepass_downsample_texture.0.default_view),
+            tex_view_entry(9, &screen_space_passes_textures.processed_img.default_view),
+            tex_view_entry(10, &voxel_pass_textures.read.default_view),
+            tex_view_entry(11, &voxel_pass_textures.write.default_view),
         ];
 
         {
@@ -171,17 +180,6 @@ impl Node for VoxelPassNode {
             pass.set_pipeline(update_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
             pass.dispatch_workgroups(SIZE, SIZE, SIZE);
-        }
-        {
-            render_context.command_encoder().copy_texture_to_texture(
-                current_voxel_image.texture.as_image_copy(),
-                prev_voxel_image.texture.as_image_copy(),
-                Extent3d {
-                    width: SIZE,
-                    height: SIZE,
-                    depth_or_array_layers: SIZE,
-                },
-            );
         }
 
         Ok(())
@@ -254,26 +252,26 @@ impl FromWorld for TracePipeline {
     }
 }
 
-#[derive(Resource, Default, Clone, ExtractResource, TypeUuid)]
-#[uuid = "ca92a954-077c-4bf3-8d86-a9417e89825e"]
-pub struct VoxelPassesTargetImage {
-    pub prev: Handle<Image>,
-    pub current: Handle<Image>,
+#[derive(Component, Clone)]
+pub struct VoxelPassTextures {
+    pub write: CachedTexture,
+    pub read: CachedTexture,
 }
 
-fn setup_image(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    let size = Extent3d {
-        width: SIZE,
-        height: SIZE,
-        depth_or_array_layers: SIZE,
-    };
-    let img = Image {
-        data: vec![
-            0;
-            get_image_bytes_count(size.width, size.height, 1, 4, 4)
-                * size.depth_or_array_layers as usize
-        ],
-        texture_descriptor: TextureDescriptor {
+fn prepare_textures(
+    mut commands: Commands,
+    mut texture_cache: ResMut<TextureCache>,
+    render_device: Res<RenderDevice>,
+    views: Query<Entity, (With<VoxelPass>, With<ExtractedCamera>)>,
+    frame_count: Res<FrameCount>,
+) {
+    for entity in &views {
+        let size = Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: SIZE,
+        };
+        let mut texture_descriptor = TextureDescriptor {
             dimension: TextureDimension::D3,
             format: TextureFormat::Rgba32Float,
             usage: TextureUsages::STORAGE_BINDING
@@ -284,28 +282,39 @@ fn setup_image(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             size,
             mip_level_count: 1,
             sample_count: 1,
-        },
-        sampler_descriptor: ImageSampler::Descriptor(SamplerDescriptor {
-            label: Some("ScreenSpacePassesNode_sampler_descriptor"),
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Linear,
-            mipmap_filter: FilterMode::Linear,
-            ..default()
-        }),
-        texture_view_descriptor: Some(TextureViewDescriptor {
-            label: None,
-            format: Some(TextureFormat::Rgba32Float),
-            dimension: Some(TextureViewDimension::D3),
-            base_mip_level: 0,
-            mip_level_count: None,
-            base_array_layer: 0,
-            array_layer_count: None,
-            aspect: TextureAspect::All,
-        }),
-    };
+        };
 
-    commands.insert_resource(VoxelPassesTargetImage {
-        prev: images.add(img.clone()),
-        current: images.add(img),
-    });
+        texture_descriptor.label = Some("VoxelPassesTexture1");
+        let texture_1 = texture_cache.get(&render_device, texture_descriptor.clone());
+
+        texture_descriptor.label = Some("VoxelPassesTexture2");
+        let texture_2 = texture_cache.get(&render_device, texture_descriptor);
+
+        let textures = if frame_count.0 % 2 == 0 {
+            VoxelPassTextures {
+                write: texture_1,
+                read: texture_2,
+            }
+        } else {
+            VoxelPassTextures {
+                write: texture_2,
+                read: texture_1,
+            }
+        };
+
+        commands.entity(entity).insert(textures);
+    }
 }
+
+/*
+TextureViewDescriptor {
+    label: None,
+    format: Some(TextureFormat::Rgba32Float),
+    dimension: Some(TextureViewDimension::D3),
+    base_mip_level: 0,
+    mip_level_count: None,
+    base_array_layer: 0,
+    array_layer_count: None,
+    aspect: TextureAspect::All,
+}
+ */

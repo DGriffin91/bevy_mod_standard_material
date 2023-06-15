@@ -44,14 +44,11 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let V = normalize(world_position - view.world_position.xyz);
 
     let last_world_cache = textureLoad(voxel_cache, vec3<i32>(position_world_to_fvoxel(world_position)), 0);
-
-    let hit = march_voxel_grid(view.world_position.xyz, V, 512u, 1u, 1000.0);
-
-    var col = hit.color;
-
-    if hit.t < 0.0 {
-        col = frame_col.rgb;
-    }
+    //let hit = march_voxel_grid(view.world_position.xyz, V, 512u, 1u, 1000.0);
+    //var col = hit.color;
+    //if hit.t < 0.0 {
+    //    col = frame_col.rgb;
+    //}
     
 
     //return frame_col;

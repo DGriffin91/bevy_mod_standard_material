@@ -1,8 +1,11 @@
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
     copy_frame::CopyFrame,
-    path_trace::TraceSettings,
+    path_trace::{PathTrace, TraceSettings},
+    prepass_downsample::PrepassDownsample,
+    screen_space_passes::ScreenSpacePasses,
     taa::TemporalAntiAliasBundle,
+    voxel_pass::VoxelPass,
 };
 use bevy::{
     core_pipeline::{
@@ -135,6 +138,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             Fxaa::default(),
             TemporalAntiAliasBundle::default(),
             CopyFrame,
+            PrepassDownsample,
+            VoxelPass,
+            ScreenSpacePasses,
+            PathTrace,
             // {
             //    settings: TemporalAntiAliasSettings { reset: true },
             //    jitter: TemporalJitter { offset: Vec2::ZERO },
