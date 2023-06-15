@@ -13,6 +13,7 @@ mod path_trace;
 mod pbr_material;
 mod prepass_downsample;
 mod screen_space_passes;
+pub mod taa;
 //mod slow_frame_diag;
 mod sphere;
 mod voxel_pass;
@@ -21,8 +22,7 @@ use std::time::Duration;
 
 use bevy::{
     asset::ChangeWatcher,
-    core_pipeline::experimental::taa::TemporalAntiAliasPlugin,
-    diagnostic::LogDiagnosticsPlugin,
+    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     input::mouse::MouseMotion,
     pbr::DirectionalLightShadowMap,
     prelude::*,
@@ -45,6 +45,7 @@ use path_trace::PathTracePlugin;
 use pbr_material::{load_blue_noise, swap_standard_material, BlueNoise, CustomStandardMaterial};
 use prepass_downsample::PrepassDownsample;
 use screen_space_passes::ScreenSpacePassesPlugin;
+use taa::TemporalAntiAliasPlugin;
 use voxel_pass::VoxelPassPlugin;
 
 fn main() {
@@ -91,10 +92,11 @@ fn main() {
         .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
         .add_systems(Update, swap_standard_material)
         .add_plugin(LogDiagnosticsPlugin::default())
+        .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(TemporalAntiAliasPlugin)
         .add_systems(Startup, load_blue_noise)
         .add_systems(Startup, no_empty_tlas)
-        .add_systems(Startup, setup_part)
+        //.add_systems(Startup, setup_part)
         .add_systems(Update, move_directional_light);
 
     app.run();

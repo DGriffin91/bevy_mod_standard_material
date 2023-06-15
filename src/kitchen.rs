@@ -2,11 +2,11 @@ use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
     path_trace::TraceSettings,
     pbr_material::CustomStandardMaterial,
+    taa::TemporalAntiAliasBundle,
 };
 use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
-        experimental::taa::TemporalAntiAliasBundle,
         fxaa::Fxaa,
         prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass},
         tonemapping::Tonemapping,
@@ -69,38 +69,38 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     //    });
 
     // Sun
-    //commands.spawn(DirectionalLightBundle {
-    //    transform: Transform::from_rotation(Quat::from_euler(
-    //        EulerRot::XYZ,
-    //        (13.3f32).to_radians(),
-    //        (180.0 - 14.2f32).to_radians(),
-    //        0.0,
-    //    )),
-    //    directional_light: DirectionalLight {
-    //        color: Color::rgb(0.95, 0.93, 0.85),
-    //        illuminance: 120000.0,
-    //        shadows_enabled: true,
-    //        shadow_depth_bias: 0.10,
-    //        shadow_normal_bias: 1.5,
-    //    },
-    //    cascade_shadow_config: CascadeShadowConfigBuilder {
-    //        num_cascades: 4,
-    //        minimum_distance: 0.01,
-    //        maximum_distance: 50.0,
-    //        first_cascade_far_bound: 3.0,
-    //        overlap_proportion: 0.2,
-    //    }
-    //    .into(),
-    //    ..default() //cascade_shadow_config: CascadeShadowConfig {
-    //                //    /// The (positive) distance to the far boundary of each cascade.
-    //                //    bounds: vec![6.0],
-    //                //    /// The proportion of overlap each cascade has with the previous cascade.
-    //                //    overlap_proportion: 0.5,
-    //                //    /// The (positive) distance to the near boundary of the first cascade.
-    //                //    minimum_distance: -6.0,
-    //                //},
-    //                //..default()
-    //});
+    commands.spawn(DirectionalLightBundle {
+        transform: Transform::from_rotation(Quat::from_euler(
+            EulerRot::XYZ,
+            (13.3f32).to_radians(),
+            (180.0 - 14.2f32).to_radians(),
+            0.0,
+        )),
+        directional_light: DirectionalLight {
+            color: Color::rgb(0.95, 0.93, 0.85),
+            illuminance: 120000.0,
+            shadows_enabled: true,
+            shadow_depth_bias: 0.10,
+            shadow_normal_bias: 1.5,
+        },
+        cascade_shadow_config: CascadeShadowConfigBuilder {
+            num_cascades: 4,
+            minimum_distance: 0.01,
+            maximum_distance: 50.0,
+            first_cascade_far_bound: 3.0,
+            overlap_proportion: 0.2,
+        }
+        .into(),
+        ..default() //cascade_shadow_config: CascadeShadowConfig {
+                    //    /// The (positive) distance to the far boundary of each cascade.
+                    //    bounds: vec![6.0],
+                    //    /// The proportion of overlap each cascade has with the previous cascade.
+                    //    overlap_proportion: 0.5,
+                    //    /// The (positive) distance to the near boundary of the first cascade.
+                    //    minimum_distance: -6.0,
+                    //},
+                    //..default()
+    });
 
     let mut bloom_settings = BloomSettings::NATURAL;
     bloom_settings.intensity *= 0.35;
