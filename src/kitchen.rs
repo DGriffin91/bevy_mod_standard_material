@@ -14,7 +14,7 @@ use bevy::{
         prepass::{DeferredPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
-    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    pbr::{CascadeShadowConfig, DirectionalLightShadowMap},
     prelude::*,
 };
 
@@ -86,23 +86,23 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             shadow_depth_bias: 0.10,
             shadow_normal_bias: 1.5,
         },
-        cascade_shadow_config: CascadeShadowConfigBuilder {
-            num_cascades: 4,
-            minimum_distance: 0.01,
-            maximum_distance: 50.0,
-            first_cascade_far_bound: 3.0,
-            overlap_proportion: 0.2,
-        }
-        .into(),
-        ..default() //cascade_shadow_config: CascadeShadowConfig {
-                    //    /// The (positive) distance to the far boundary of each cascade.
-                    //    bounds: vec![6.0],
-                    //    /// The proportion of overlap each cascade has with the previous cascade.
-                    //    overlap_proportion: 0.5,
-                    //    /// The (positive) distance to the near boundary of the first cascade.
-                    //    minimum_distance: -6.0,
-                    //},
-                    //..default()
+        //cascade_shadow_config: CascadeShadowConfigBuilder {
+        //    num_cascades: 4,
+        //    minimum_distance: 0.01,
+        //    maximum_distance: 50.0,
+        //    first_cascade_far_bound: 3.0,
+        //    overlap_proportion: 0.2,
+        //}
+        //.into(),
+        cascade_shadow_config: CascadeShadowConfig {
+            /// The (positive) distance to the far boundary of each cascade.
+            bounds: vec![6.0],
+            /// The proportion of overlap each cascade has with the previous cascade.
+            overlap_proportion: 0.5,
+            /// The (positive) distance to the near boundary of the first cascade.
+            minimum_distance: -6.0,
+        },
+        ..default()
     });
 
     let mut bloom_settings = BloomSettings::NATURAL;

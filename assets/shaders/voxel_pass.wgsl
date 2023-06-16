@@ -122,7 +122,6 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
     let vox_vs_center = position_world_to_view(vox_ws_center);
 
-    //super slow if I normalize, or look behind me
     var voxel_ndc = position_world_to_ndc(vox_ws_center); 
     var updated = true;
     let n = 2;
@@ -156,8 +155,10 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
             }
         }
         if closest < VOXEL_SIZE / 1.0 {
-            color = textureLoad(prev_frame_tex, closest_coord, 0).rgb;
-            let hysteresis = 0.05;
+            let closest_motion_vector = prepass_motion_vector(vec4<f32>(vec2<f32>(closest_coord), 0.0, 0.0), 0u).xy;
+            let history_uv = vec2<f32>(closest_coord) / view.viewport.zw - closest_motion_vector;
+            color = textureLoad(prev_frame_tex, vec2<i32>(history_uv * view.viewport.zw), 0).rgb;
+            let hysteresis = 0.1;
             color = mix(prev_voxel.rgb, color.rgb, hysteresis);
             //textureStore(voxel_cache_next, vec3(location), vec4(a, 0.0, 0.0, f32(globals.time)));
             textureStore(voxel_cache_next, vec3(location), vec4(color.rgb, f32(globals.time)));

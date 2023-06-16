@@ -48,10 +48,11 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
 
     let samples = 1u;
     var sun_dir = vec3(-0.25, -0.24, 1.0);
-    let sun_color = vec3(0.95, 0.79268, 0.637758) * 0.0;
+    let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0;
     //var sun_dir = vec3(0.22, -1.0, -0.2); //sponza
     //let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0; //sponza
     let sky_color = vec3(1.75, 1.9, 1.99) * 2.0;
+    let nee = 0.05; // TODO NEE
 
 
     // TODO depth here won't quite be accurate
@@ -102,7 +103,7 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
         var sray = new_ray(ray_hit_pos, -sun_dir);
         query = scene_query(sray);
         if query.hit.distance == F32_MAX {
-            cand.color = hit_color * sun_color;
+            cand.color = hit_color * sun_color * nee;
         }
     } else {
         cand.color = hit_color * sky_color;    

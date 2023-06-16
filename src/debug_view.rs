@@ -24,7 +24,7 @@ use crate::{
     copy_frame::PrevFrameTexture,
     prepass_downsample::PrepassDownsampleTexture,
     screen_space_passes::ScreenSpacePassesTextures,
-    voxel_pass::VoxelPassTextures,
+    voxel_pass::VoxelPassTextures, path_trace::PathTraceTextures,
 };
 
 pub struct DebugViewPlugin;
@@ -66,6 +66,7 @@ struct DebugViewNode {
             &'static PrepassDownsampleTexture,
             &'static VoxelPassTextures,
             &'static ScreenSpacePassesTextures,
+            &'static PathTraceTextures,
         ),
         With<ExtractedView>,
     >,
@@ -103,7 +104,8 @@ impl Node for DebugViewNode {
             prev_frame_tex, 
             prepass_downsample_texture, 
             voxel_pass_textures,
-            screen_space_passes_textures)) = self.query.get_manual(world, view_entity) else {
+            screen_space_passes_textures,
+            path_trace_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -137,9 +139,10 @@ impl Node for DebugViewNode {
             tex_view_entry(6, &screen_space_passes_textures.processed_img.default_view),
             tex_view_entry(7, &screen_space_passes_textures.current_img.default_view),
             tex_view_entry(8, &voxel_pass_textures.write.default_view),
-            tex_view_entry(9, &depth_view),
-            tex_view_entry(10, &normal_binding.default_view),
-            tex_view_entry(11, &motion_vectors_binding.default_view),
+            tex_view_entry(9, &path_trace_textures.processed_img.default_view),
+            tex_view_entry(10, &depth_view),
+            tex_view_entry(11, &normal_binding.default_view),
+            tex_view_entry(12, &motion_vectors_binding.default_view),
         ];
 
         let bind_group = render_context
@@ -188,10 +191,11 @@ impl FromWorld for DebugViewPipeline {
             image_layout_entry(6, TextureViewDimension::D2Array),
             image_layout_entry(7, TextureViewDimension::D2Array),
             image_layout_entry(8, TextureViewDimension::D3),
+            image_layout_entry(9, TextureViewDimension::D2Array),
         ];
 
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([9, 10, 11], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([10, 11, 12], false));
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("debug_view_bind_group_layout"),
