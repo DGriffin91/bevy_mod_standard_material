@@ -11,7 +11,7 @@ use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
         fxaa::Fxaa,
-        prepass::{DeferredPrepass, NormalPrepass},
+        prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
     pbr::{CascadeShadowConfig, DirectionalLightShadowMap},

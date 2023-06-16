@@ -249,7 +249,14 @@ fn pbr(
     // Ambient light (indirect)
     var indirect_light = ambient_light(in.world_position, in.N, in.V, NdotV, diffuse_color, F0, perceptual_roughness, occlusion);
     
+    // ------------------
+    // GI (SSGI + PT)
     indirect_light += sample_restir_gi(diffuse_color, screen_uv, in.N, in.world_position.xyz);
+
+    // SSR
+    let screen_passes_processed_size = vec2<f32>(textureDimensions(screen_passes_processed).xy);
+    indirect_light += textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 6u, 0).xyz;
+    // ------------------
 
     // Environment map light (indirect)
 #ifdef ENVIRONMENT_MAP

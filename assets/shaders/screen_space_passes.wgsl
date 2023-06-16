@@ -6,9 +6,11 @@ Optimize voxel traversal, we understep currently so we naively hit every voxel
 */
 
 #define RAY_MARCH
-#define USE_VOXEL_FALLBACK
+//#define USE_VOXEL_FALLBACK
 #define FILTER_SSGI
 #define USE_PATH_TRACED
+#define SSR
+const SSR_SAMPLES = 4u;
 
 @group(0) @binding(4)
 var blue_noise_tex: texture_2d_array<f32>;
@@ -96,15 +98,18 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
     let screen_history_uv = screen_uv - closest_motion_vector;
     let history_hit_screen = screen_history_uv.x > 0.0 && screen_history_uv.x < 1.0 && screen_history_uv.y > 0.0 && screen_history_uv.y < 1.0;
     let screen_space_passes_coord = vec2<i32>(tex_dims * screen_history_uv);
+    var sample_coord = screen_space_passes_coord;
+
+    let first_probe_pos = textureLoad(screen_passes_processed, sample_coord, 2u, 0).xyz;
+    let first_probe_pos_ndc = position_world_to_ndc(first_probe_pos);
+    let probe_pos_ndc = position_world_to_ndc(world_position_offs);
+    let probe_ndc_dist = distance(first_probe_pos_ndc.xyz, probe_pos_ndc.xyz);
     // locate closest probe
     if history_hit_screen {
         var selected_offset = vec2(0, 0);
-        let first_probe_pos = textureLoad(screen_passes_processed, screen_space_passes_coord, 2u, 0).xyz;
-        let first_probe_pos_ndc = position_world_to_ndc(first_probe_pos);
-        let probe_pos_ndc = position_world_to_ndc(world_position_offs);
         var closest = distance(first_probe_pos, world_position_offs);
         probe_pos = first_probe_pos;
-        if distance(first_probe_pos_ndc.xyz, probe_pos_ndc.xyz) > 0.001 {
+        if probe_ndc_dist > 0.005 {
             for (var x = -1; x <= 1; x += 1) {
                 for (var y = -1; y <= 1; y += 1) {
                     let offset = vec2(x, y);
@@ -123,7 +128,8 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
             }
         }
 
-        let sample_coord = screen_space_passes_coord + selected_offset;
+        sample_coord = screen_space_passes_coord + selected_offset;
+        let sample_uv = (vec2<f32>(sample_coord) + 0.5) / vec2<f32>(tex_dims);
         proposed_pos = textureLoad(screen_passes_processed, sample_coord, 0u, 0).xyz;
         let weight_data = textureLoad(screen_passes_processed, sample_coord, 1u, 0).xyz;
         probe_latest_color = textureLoad(screen_passes_processed, sample_coord, 3u, 0).xyz;
@@ -404,6 +410,24 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
     textureStore(screen_passes_target, ifrag_coord, 2u, vec4(probe_pos, 0.0));
     textureStore(screen_passes_target, ifrag_coord, 3u, vec4(probe_latest_color, 0.0));
     textureStore(screen_passes_target, ifrag_coord, 4u, vec4(probe_color, 0.0));
+
+
+#ifdef SSR
+    var ssr_hysterisis = 0.1;
+
+    let F0 = get_f0(0.5, 0.0, vec3(1.0));
+    let roughness = perceptualRoughnessToRoughness(0.5);
+    var ssr = bad_ssr(ifrag_coord, surface_normal, world_position, roughness, F0, SSR_SAMPLES, vec2(2.0, 3.0)).rgb;
+
+    if history_hit_screen && probe_ndc_dist < 0.005 {
+        let prev_ssr = textureLoad(screen_passes_processed, sample_coord, 6u, 0).rgb;
+        ssr = mix(prev_ssr, ssr, ssr_hysterisis);
+    }
+
+    ssr = clamp(ssr, vec3(0.0), vec3(100.0));
+
+    textureStore(screen_passes_target, ifrag_coord, 6u, vec4(ssr, 1.0));
+#endif
 }
 
 
@@ -411,6 +435,11 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
 fn get_f0(reflectance: f32, metallic: f32, metal_color: vec3<f32>) -> vec3<f32> {
     let F0 = 0.16 * reflectance * reflectance * (1.0 - metallic) + metal_color * metallic;
     return F0;
+}
+
+fn perceptualRoughnessToRoughness(perceptualRoughness: f32) -> f32 {
+    let clampedPerceptualRoughness = clamp(perceptualRoughness, 0.089, 1.0);
+    return clampedPerceptualRoughness * clampedPerceptualRoughness;
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -436,7 +465,6 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let ufrag_coord = vec2<u32>(frag_coord.xy);
 
     let world_position = position_ndc_to_world(vec3(uv_to_ndc(screen_uv), depth));
-    let F0 = get_f0(0.5, 0.0, vec3(1.0));
 
     ssgi_restir(location, surface_normal, world_position, 1u);
 
