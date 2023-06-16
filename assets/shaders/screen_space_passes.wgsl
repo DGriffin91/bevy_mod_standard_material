@@ -33,27 +33,45 @@ var<uniform> globals: Globals;
 var prev_frame_tex: texture_2d<f32>;
 @group(0) @binding(3)
 var linear_sampler: sampler;
+
 @group(0) @binding(5)
-var depth_prepass_texture: texture_depth_2d;
-@group(0) @binding(6)
-var normal_prepass_texture: texture_2d<f32>;
-@group(0) @binding(7)
-var motion_vector_prepass_texture: texture_2d<f32>;
-@group(0) @binding(8)
 var prepass_downsample: texture_2d<f32>;
-@group(0) @binding(9)
-var screen_passes_processed: texture_2d_array<f32>;
-@group(0) @binding(10)
-var screen_passes_target: texture_storage_2d_array<rgba16float, write>;
-@group(0) @binding(11)
+@group(0) @binding(6)
 var voxel_cache: texture_3d<f32>;
-@group(0) @binding(12)
+@group(0) @binding(7)
 var path_trace_image: texture_2d_array<f32>;
+@group(0) @binding(8)
+var screen_passes_processed: texture_2d_array<f32>;
+@group(0) @binding(9)
+var screen_passes_target: texture_storage_2d_array<rgba16float, write>;
+
+@group(0) @binding(10)
+var depth_prepass_texture: texture_depth_2d;
+@group(0) @binding(11)
+var normal_prepass_texture: texture_2d<f32>;
+@group(0) @binding(12)
+var motion_vector_prepass_texture: texture_2d<f32>;
+@group(0) @binding(13)
+var deferred_prepass_texture: texture_2d<u32>;
 
 
 
 #import bevy_coordinate_systems::transformations
+
 #import bevy_pbr::prepass_utils
+
+// needed by pbr_deferred_functions
+fn calculate_view(world_position: vec4<f32>, is_orthographic: bool) -> vec3<f32> {
+    if is_orthographic {
+        return normalize(vec3<f32>(view.view_proj[0].z, view.view_proj[1].z, view.view_proj[2].z));
+    } else {
+        return normalize(view.world_position.xyz - world_position.xyz);
+    }
+}
+
+#import bevy_pbr::pbr_types
+#import bevy_pbr::pbr_deferred_types
+#import bevy_pbr::pbr_deferred_functions
 
 #import "shaders/contact_shadows.wgsl"
 #import "shaders/depth_buffer_raymarching.wgsl"
@@ -73,7 +91,8 @@ fn new_drm_for_restir() -> DepthRayMarch {
     return dmr;
 }
 
-fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position: vec3<f32>, samples: u32) {
+fn ssgi_restir(ifrag_coord: vec2<i32>, pbr: PbrInput, samples: u32) {
+
     
     let trace_dist = 10.0; //after this distance, we switch to the radiance cache
 
@@ -84,7 +103,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
     let screen_uv = vec2<f32>(ifrag_coord) / tex_dims + frag_size * 0.5;
     //let ifrag_coord = vec2<i32>(screen_uv * tex_dims); //TODO still not rounding to the same probe
 
-    var world_position_offs = world_position + surface_normal * 0.001;
+    var world_position_offs = pbr.world_position.xyz + pbr.N * 0.001;
 
     var probe_pos = world_position_offs;
     var proposed_pos = vec3(F32_MAX);
@@ -109,7 +128,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
         var selected_offset = vec2(0, 0);
         var closest = distance(first_probe_pos, world_position_offs);
         probe_pos = first_probe_pos;
-        if probe_ndc_dist > 0.005 {
+        if probe_ndc_dist > 0.002 {
             for (var x = -1; x <= 1; x += 1) {
                 for (var y = -1; y <= 1; y += 1) {
                     let offset = vec2(x, y);
@@ -182,13 +201,12 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
 
 
 
-    let surface_normal = normalize(surface_normal);
     let ufrag_coord = vec2<u32>(ifrag_coord.xy);
-    // TODO surface_normal * 0.01 is because of lines from using really low mip for depth
+    // TODO pbr.N * 0.01 is because of lines from using really low mip for depth
     let ray_start_ws = probe_pos;
     let ray_start_ndc = position_world_to_ndc(ray_start_ws);
 
-    let TBN = build_orthonormal_basis(surface_normal);
+    let TBN = build_orthonormal_basis(pbr.N);
 
     var dmr = new_drm_for_restir();
     dmr.ray_start_cs = ray_start_ndc;
@@ -211,7 +229,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
             //let dist = distance(proposed_pos, probe_pos);
             //
             //var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
-            //let brdf = max(dot(surface_normal, direction), 0.0);
+            //let brdf = max(dot(pbr.N, direction), 0.0);
             //var new_weight = gr * (1.0 / (1.0 + dist * dist));
             //new_weight *= brdf;
             //new_weight = max(new_weight, 0.0);
@@ -286,7 +304,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
                 let hit_frame = history_uv.x > 0.0 && history_uv.x < 1.0 && history_uv.y > 0.0 && history_uv.y < 1.0;
 
                 var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
-                let brdf = max(dot(surface_normal, direction), 0.0);
+                let brdf = max(dot(pbr.N, direction), 0.0);
                 var new_weight = gr * (1.0 / (1.0 + dist * dist));
                 new_weight *= brdf * f32(backface < 0.0) * f32(hit_frame);
                 new_weight = max(new_weight, 0.0);
@@ -327,7 +345,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
                 let color = voxel_hit.color * voxel_derate;
                 let prop_pos = probe_pos + direction * voxel_hit.t;
                 var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
-                let brdf = max(dot(surface_normal, direction), 0.0);
+                let brdf = max(dot(pbr.N, direction), 0.0);
                 var new_weight = gr * (1.0 / (1.0 + dist * dist));
                 new_weight *= brdf * voxel_derate;
                 new_weight = max(new_weight, 0.0);
@@ -372,7 +390,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
 
             let prop_pos = probe_pos + direction * dist;
             var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
-            let brdf = max(dot(surface_normal, direction), 0.0);
+            let brdf = max(dot(pbr.N, direction), 0.0);
             var new_weight = brdf * gr * (1.0 / (1.0 + dist * dist));
             new_weight = max(new_weight, 0.0);
 
@@ -415,9 +433,9 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
 #ifdef SSR
     var ssr_hysterisis = 0.1;
 
-    let F0 = get_f0(0.5, 0.0, vec3(1.0));
-    let roughness = perceptualRoughnessToRoughness(0.5);
-    var ssr = bad_ssr(ifrag_coord, surface_normal, world_position, roughness, F0, SSR_SAMPLES, vec2(2.0, 3.0)).rgb;
+    let F0 = get_f0(pbr.material.reflectance, pbr.material.metallic, pbr.material.base_color.rgb);
+    let roughness = perceptualRoughnessToRoughness(pbr.material.perceptual_roughness);
+    var ssr = bad_ssr(ifrag_coord, pbr.N, pbr.world_position.xyz, roughness, F0, SSR_SAMPLES, vec2(2.0, 3.0)).rgb;
 
     if history_hit_screen && probe_ndc_dist < 0.005 {
         let prev_ssr = textureLoad(screen_passes_processed, sample_coord, 6u, 0).rgb;
@@ -426,8 +444,10 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position
 
     ssr = clamp(ssr, vec3(0.0), vec3(100.0));
 
-    textureStore(screen_passes_target, ifrag_coord, 6u, vec4(ssr, 1.0));
-#endif
+    textureStore(screen_passes_target, ifrag_coord, 6u, vec4(ssr, 0.0));
+#else
+    textureStore(screen_passes_target, ifrag_coord, 6u, vec4(0.0));
+#endif //SSR
 }
 
 
@@ -457,16 +477,24 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let frag_size = 1.0 / ftarget_dims;
     var screen_uv = flocation.xy / ftarget_dims + frag_size * 0.5;
 
-    let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 1.0);
-    let surface_normal = nor_depth.xyz;
-    let depth = nor_depth.w;
-    let frag_coord = vec4(flocation, depth, 0.0);
+    //let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 1.0);
+    //let pbr.N = nor_depth.xyz;
+    //let depth = nor_depth.w;
+    var frag_coord = vec4(flocation, 0.0, 0.0);
     let ifrag_coord = vec2<i32>(frag_coord.xy);
     let ufrag_coord = vec2<u32>(frag_coord.xy);
 
-    let world_position = position_ndc_to_world(vec3(uv_to_ndc(screen_uv), depth));
 
-    ssgi_restir(location, surface_normal, world_position, 1u);
+    let deferred_data = textureLoad(deferred_prepass_texture, ifrag_coord, 0);
+#ifdef WEBGL
+    frag_coord.z = unpack_unorm3x4_plus_unorm_20(deferred_data.b).w;
+#else
+    frag_coord.z = prepass_depth(frag_coord, 0u);
+#endif
+    var pbr_input = pbr_input_from_deferred_gbuffer(frag_coord, deferred_data);
+
+
+    ssgi_restir(location, pbr_input, 1u);
 
     let closest_motion_vector = prepass_motion_vector(vec4<f32>(screen_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
     let history_uv = screen_uv - closest_motion_vector;

@@ -218,7 +218,7 @@ impl FromWorld for TracePipeline {
         ];
 
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([5, 6, 7], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([5, 6, 7, 8], false)[..3]);
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("voxel_pass_bind_group_layout"),

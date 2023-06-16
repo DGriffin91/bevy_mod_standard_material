@@ -122,50 +122,17 @@ fn calculate_view(
     return V;
 }
 
-struct PbrInput {
-    material: StandardMaterial,
-    occlusion: f32,
-    frag_coord: vec4<f32>,
-    world_position: vec4<f32>,
-    // Normalized world normal used for shadow mapping as normal-mapping is not used for shadow
-    // mapping
-    world_normal: vec3<f32>,
-    // Normalized normal-mapped world normal used for lighting
-    N: vec3<f32>,
-    // Normalized view vector in world space, pointing from the fragment world position toward the
-    // view world position
-    V: vec3<f32>,
-    is_orthographic: bool,
-    // mesh flags
-    flags: u32,
-};
-
-// Creates a PbrInput with default values
-fn pbr_input_new() -> PbrInput {
-    var pbr_input: PbrInput;
-
-    pbr_input.material = standard_material_new();
-    pbr_input.occlusion = 1.0;
-
-    pbr_input.frag_coord = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    pbr_input.world_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    pbr_input.world_normal = vec3<f32>(0.0, 0.0, 1.0);
-
-    pbr_input.is_orthographic = false;
-
-    pbr_input.N = vec3<f32>(0.0, 0.0, 1.0);
-    pbr_input.V = vec3<f32>(1.0, 0.0, 0.0);
-
-    pbr_input.flags = 0u;
-
-    return pbr_input;
-}
-
 #ifndef PREPASS_FRAGMENT
 fn pbr(
     in: PbrInput,
 ) -> vec4<f32> {
+    // ------------------
+    // ------------------
+    // ------------------
     let screen_uv = in.frag_coord.xy / view.viewport.zw;
+    // ------------------
+    // ------------------
+    // ------------------
     
     var output_color: vec4<f32> = in.material.base_color;
 
@@ -250,12 +217,16 @@ fn pbr(
     var indirect_light = ambient_light(in.world_position, in.N, in.V, NdotV, diffuse_color, F0, perceptual_roughness, occlusion);
     
     // ------------------
+    // ------------------
+    // ------------------
     // GI (SSGI + PT)
     indirect_light += sample_restir_gi(diffuse_color, screen_uv, in.N, in.world_position.xyz);
 
     // SSR
     let screen_passes_processed_size = vec2<f32>(textureDimensions(screen_passes_processed).xy);
     indirect_light += textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 6u, 0).xyz;
+    // ------------------
+    // ------------------
     // ------------------
 
     // Environment map light (indirect)

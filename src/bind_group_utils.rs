@@ -284,9 +284,9 @@ pub fn linear_sampler() -> SamplerDescriptor<'static> {
 }
 
 pub fn prepass_get_bind_group_layout_entries(
-    bindings: [u32; 3],
+    bindings: [u32; 4],
     multisampled: bool,
-) -> [BindGroupLayoutEntry; 3] {
+) -> [BindGroupLayoutEntry; 4] {
     [
         // Depth texture
         BindGroupLayoutEntry {
@@ -317,6 +317,17 @@ pub fn prepass_get_bind_group_layout_entries(
             ty: BindingType::Texture {
                 multisampled,
                 sample_type: TextureSampleType::Float { filterable: false },
+                view_dimension: TextureViewDimension::D2,
+            },
+            count: None,
+        },
+        // Deferred texture
+        BindGroupLayoutEntry {
+            binding: bindings[3],
+            visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+            ty: BindingType::Texture {
+                multisampled: false,
+                sample_type: TextureSampleType::Uint,
                 view_dimension: TextureViewDimension::D2,
             },
             count: None,

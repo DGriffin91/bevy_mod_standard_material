@@ -27,13 +27,13 @@ use bevy::{
             BindingResource, CachedComputePipelineId, ComputePassDescriptor,
             ComputePipelineDescriptor, Extent3d, FilterMode, PipelineCache, Sampler,
             SamplerDescriptor, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat,
-            TextureUsages, TextureViewDescriptor, TextureViewDimension,
+            TextureUsages, TextureViewDescriptor, TextureViewDimension, ShaderDefVal,
         },
         renderer::{RenderContext, RenderDevice},
-        texture::{CachedTexture, TextureCache},
+        texture::{CachedTexture, TextureCache, },
         view::{ExtractedView, ViewTarget, ViewUniformOffset},
         Render, RenderApp, RenderSet,
-    },
+    }, pbr::{MAX_CASCADES_PER_LIGHT, MAX_DIRECTIONAL_LIGHTS}, 
 };
 
 const WORKGROUP_SIZE: u32 = 8;
@@ -145,9 +145,15 @@ impl Node for ScreenSpacePassesNode {
             return Ok(());
         };
 
+
+
+
+        
+
         let depth_binding = prepass_textures.depth.as_ref().unwrap();
         let normal_binding = prepass_textures.normal.as_ref().unwrap();
         let motion_vectors_binding = prepass_textures.motion_vectors.as_ref().unwrap();
+        let deferred_binding = prepass_textures.deferred.as_ref().unwrap();
 
         let depth_view = depth_binding.texture.create_view(&TextureViewDescriptor {
             label: Some("prepass_depth"),
@@ -157,20 +163,23 @@ impl Node for ScreenSpacePassesNode {
 
         let mut entries = vec![
             // at the start so they are easy to swap for the blur
-            tex_view_entry(9, &screen_space_passes_textures.processed_img.default_view),
-            tex_view_entry(10, &screen_space_passes_textures.current_img.default_view),
+            tex_view_entry(8, &screen_space_passes_textures.processed_img.default_view),
+            tex_view_entry(9, &screen_space_passes_textures.current_img.default_view),
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
             tex_view_entry(2, &prev_frame_tex.0.default_view),
             sampler_binding_entry(3, &pipeline.sampler),
             get_tex_view_entry!(4, images, resource!(world, BlueNoise).0),
-            tex_view_entry(5, &depth_view),
-            tex_view_entry(6, &normal_binding.default_view),
-            tex_view_entry(7, &motion_vectors_binding.default_view),
-            tex_view_entry(8, &prepass_downsample_texture.0.default_view),
-            tex_view_entry(11, &voxel_pass_textures.write.default_view),
-            tex_view_entry(12, &path_trace_textures.processed_img.default_view),
+            tex_view_entry(5, &prepass_downsample_texture.0.default_view),
+            tex_view_entry(6, &voxel_pass_textures.write.default_view),
+            tex_view_entry(7, &path_trace_textures.processed_img.default_view),
+            tex_view_entry(10, &depth_view),
+            tex_view_entry(11, &normal_binding.default_view),
+            tex_view_entry(12, &motion_vectors_binding.default_view),
+            tex_view_entry(13, &deferred_binding.default_view),
         ];
+
+        
 
         let w = screen_space_passes_textures.processed_img.texture.width();
         let h = screen_space_passes_textures.processed_img.texture.height();
@@ -205,7 +214,7 @@ impl Node for ScreenSpacePassesNode {
                 render_context
                     .render_device()
                     .create_bind_group(&BindGroupDescriptor {
-                        label: Some("ScreenSpacePassesNode_bind_group"),
+                        label: Some("ScreenSpacePassesNode_bind_group_blur"),
                         layout: &pipeline.layout,
                         entries: &entries,
                     });
@@ -245,19 +254,19 @@ impl FromWorld for TracePipeline {
             image_layout_entry(2, TextureViewDimension::D2),
             sampler_layout_entry(3),
             image_layout_entry(4, TextureViewDimension::D2Array),
-            image_layout_entry(8, TextureViewDimension::D2),
-            image_layout_entry(9, TextureViewDimension::D2Array),
+            image_layout_entry(5, TextureViewDimension::D2),
+            image_layout_entry(6, TextureViewDimension::D3),
+            image_layout_entry(7, TextureViewDimension::D2Array),
+            image_layout_entry(8, TextureViewDimension::D2Array),
             storage_tex_write_layout_entry(
-                10,
+                9,
                 TextureFormat::Rgba16Float,
                 TextureViewDimension::D2Array,
             ),
-            image_layout_entry(11, TextureViewDimension::D3),
-            image_layout_entry(12, TextureViewDimension::D2Array),
         ];
 
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([5, 6, 7], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([10, 11, 12, 13], false));
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("ScreenSpacePassesNode_bind_group_layout"),
@@ -274,12 +283,23 @@ impl FromWorld for TracePipeline {
 
         let pipeline_cache = world.resource_mut::<PipelineCache>();
 
+        
+        let mut shader_defs = Vec::new();
+        shader_defs.push(ShaderDefVal::UInt(
+            "MAX_DIRECTIONAL_LIGHTS".to_string(),
+            MAX_DIRECTIONAL_LIGHTS as u32,
+        ));
+        shader_defs.push(ShaderDefVal::UInt(
+            "MAX_CASCADES_PER_LIGHT".to_string(),
+            MAX_CASCADES_PER_LIGHT as u32,
+        ));
+
         let pipeline_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
             label: None,
             layout: vec![layout.clone()],
             push_constant_ranges: Vec::new(),
             shader: shader.clone(),
-            shader_defs: vec![],
+            shader_defs: shader_defs.clone(),
             entry_point: Cow::from("update"),
         });
 
@@ -288,7 +308,7 @@ impl FromWorld for TracePipeline {
             layout: vec![layout.clone()],
             push_constant_ranges: Vec::new(),
             shader,
-            shader_defs: vec![],
+            shader_defs,
             entry_point: Cow::from("blur"),
         });
 

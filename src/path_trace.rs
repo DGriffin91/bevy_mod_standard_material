@@ -304,7 +304,7 @@ impl FromWorld for TracePipeline {
         entries.append(&mut GPUBuffers::bind_group_layout_entry([5, 6, 7, 8, 9, 10, 11]).to_vec());
 
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([15, 16, 17], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([15, 16, 17, 18], false)[..3]);
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("path_trace_bind_group_layout"),

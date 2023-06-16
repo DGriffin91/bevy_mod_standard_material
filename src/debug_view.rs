@@ -195,7 +195,7 @@ impl FromWorld for DebugViewPipeline {
         ];
 
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([10, 11, 12], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([10, 11, 12, 13], false)[..3]);
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("debug_view_bind_group_layout"),

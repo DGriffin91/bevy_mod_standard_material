@@ -198,7 +198,7 @@ impl FromWorld for PrepassDownsamplePipeline {
         let mut entries = Vec::new();
 
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([0, 1, 2], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([0, 1, 2, 3], false)[..3]);
 
         for i in 0..MIP_LEVELS {
             entries.push(storage_tex_readwrite_layout_entry(
