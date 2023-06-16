@@ -197,8 +197,8 @@ impl Node for PathTraceNode {
             tex_view_entry(16, &normal_binding.default_view),
             tex_view_entry(17, &motion_vectors_binding.default_view),
             tex_view_entry(20, &prepass_downsample_texture.0.default_view),
-            tex_view_entry(21, &screen_space_passes_textures.current_img.default_view),
-            tex_view_entry(22, &screen_space_passes_textures.processed_img.default_view),
+            tex_view_entry(21, &screen_space_passes_textures.sm_tex_write.default_view),
+            tex_view_entry(22, &screen_space_passes_textures.sm_tex_read.default_view),
         ];
 
         entries.extend(gpu_buffer_bind_group_entries);

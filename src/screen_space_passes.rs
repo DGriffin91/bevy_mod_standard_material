@@ -38,6 +38,7 @@ use bevy::{
 
 const WORKGROUP_SIZE: u32 = 8;
 const LAYERS: u32 = 8;
+const SCALE_FACTOR: u32 = 2;
 
 #[derive(Component, ExtractComponent, Clone)]
 pub struct ScreenSpacePasses;
@@ -163,8 +164,10 @@ impl Node for ScreenSpacePassesNode {
 
         let mut entries = vec![
             // at the start so they are easy to swap for the blur
-            tex_view_entry(8, &screen_space_passes_textures.processed_img.default_view),
-            tex_view_entry(9, &screen_space_passes_textures.current_img.default_view),
+            tex_view_entry(8, &screen_space_passes_textures.sm_tex_read.default_view),
+            tex_view_entry(9, &screen_space_passes_textures.sm_tex_write.default_view),
+            tex_view_entry(10, &screen_space_passes_textures.full_tex_read.default_view),
+            tex_view_entry(11, &screen_space_passes_textures.full_tex_write.default_view),
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
             tex_view_entry(2, &prev_frame_tex.0.default_view),
@@ -173,16 +176,16 @@ impl Node for ScreenSpacePassesNode {
             tex_view_entry(5, &prepass_downsample_texture.0.default_view),
             tex_view_entry(6, &voxel_pass_textures.write.default_view),
             tex_view_entry(7, &path_trace_textures.processed_img.default_view),
-            tex_view_entry(10, &depth_view),
-            tex_view_entry(11, &normal_binding.default_view),
-            tex_view_entry(12, &motion_vectors_binding.default_view),
-            tex_view_entry(13, &deferred_binding.default_view),
+            tex_view_entry(12, &depth_view),
+            tex_view_entry(13, &normal_binding.default_view),
+            tex_view_entry(14, &motion_vectors_binding.default_view),
+            tex_view_entry(15, &deferred_binding.default_view),
         ];
 
         
 
-        let w = screen_space_passes_textures.processed_img.texture.width();
-        let h = screen_space_passes_textures.processed_img.texture.height();
+        let w = screen_space_passes_textures.sm_tex_read.texture.width();
+        let h = screen_space_passes_textures.sm_tex_read.texture.height();
 
         {
             let bind_group =
@@ -263,10 +266,16 @@ impl FromWorld for TracePipeline {
                 TextureFormat::Rgba16Float,
                 TextureViewDimension::D2Array,
             ),
+            image_layout_entry(10, TextureViewDimension::D2Array),
+            storage_tex_write_layout_entry(
+                11,
+                TextureFormat::Rgba16Float,
+                TextureViewDimension::D2Array,
+            ),
         ];
 
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([10, 11, 12, 13], false));
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([12, 13, 14, 15], false));
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("ScreenSpacePassesNode_bind_group_layout"),
@@ -323,8 +332,10 @@ impl FromWorld for TracePipeline {
 
 #[derive(Component)]
 pub struct ScreenSpacePassesTextures {
-    pub current_img: CachedTexture,
-    pub processed_img: CachedTexture,
+    pub sm_tex_write: CachedTexture,
+    pub sm_tex_read: CachedTexture,
+    pub full_tex_write: CachedTexture,
+    pub full_tex_read: CachedTexture,
 }
 
 fn prepare_textures(
@@ -335,11 +346,6 @@ fn prepare_textures(
 ) {
     for (entity, camera) in &views {
         if let Some(physical_viewport_size) = camera.physical_viewport_size {
-            let size = Extent3d {
-                width: physical_viewport_size.x,
-                height: physical_viewport_size.y,
-                depth_or_array_layers: LAYERS,
-            };
             let mut texture_descriptor = TextureDescriptor {
                 dimension: TextureDimension::D2,
                 format: TextureFormat::Rgba16Float,
@@ -348,19 +354,48 @@ fn prepare_textures(
                     | TextureUsages::COPY_SRC,
                 view_formats: &[TextureFormat::Rgba16Float],
                 label: None,
-                size,
+                size: Extent3d {
+                    width: physical_viewport_size.x / SCALE_FACTOR,
+                    height: physical_viewport_size.y / SCALE_FACTOR,
+                    depth_or_array_layers: LAYERS,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
             };
 
-            texture_descriptor.label = Some("ScreenSpacePassesTextures current_img");
-            let texture_1 = texture_cache.get(&render_device, texture_descriptor.clone());
-            texture_descriptor.label = Some("ScreenSpacePassesTextures processed_img");
-            let texture_2 = texture_cache.get(&render_device, texture_descriptor.clone());
+            texture_descriptor.label = Some("ScreenSpacePassesTextures sm_tex_write");
+            let sm_tex_write = texture_cache.get(&render_device, texture_descriptor.clone());
+            texture_descriptor.label = Some("ScreenSpacePassesTextures sm_tex_read");
+            let sm_tex_read = texture_cache.get(&render_device, texture_descriptor.clone());
+
+            
+            let mut texture_descriptor = TextureDescriptor {
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Rgba16Float,
+                usage: TextureUsages::STORAGE_BINDING
+                    | TextureUsages::TEXTURE_BINDING
+                    | TextureUsages::COPY_SRC,
+                view_formats: &[TextureFormat::Rgba16Float],
+                label: None,
+                size: Extent3d {
+                    width: physical_viewport_size.x,
+                    height: physical_viewport_size.y,
+                    depth_or_array_layers: LAYERS,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+            };
+
+            texture_descriptor.label = Some("ScreenSpacePassesTextures full_tex_write");
+            let full_tex_write = texture_cache.get(&render_device, texture_descriptor.clone());
+            texture_descriptor.label = Some("ScreenSpacePassesTextures full_tex_read");
+            let full_tex_read = texture_cache.get(&render_device, texture_descriptor.clone());
 
             commands.entity(entity).insert(ScreenSpacePassesTextures {
-                current_img: texture_1,
-                processed_img: texture_2,
+                sm_tex_write,
+                sm_tex_read,
+                full_tex_write,
+                full_tex_read,
             });
         }
     }

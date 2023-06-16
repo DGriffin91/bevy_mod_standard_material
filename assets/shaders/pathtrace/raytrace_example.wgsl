@@ -22,6 +22,7 @@ fn get_screen_ray(uv: vec2<f32>) -> Ray {
 
 @compute @workgroup_size(8, 8, 1)
 fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
+    //if true {return;}
     let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
     //textureStore(target_tex, location, 0u, reference_update(invocation_id));
     let cand = candidates_update(invocation_id);

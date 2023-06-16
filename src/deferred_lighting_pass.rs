@@ -515,7 +515,7 @@ pub fn queue_deferred_lighting_bind_groups(
             entries.push(BindGroupEntry {
                 binding: 20,
                 resource: BindingResource::TextureView(
-                    &screen_space_passes_textures.current_img.default_view,
+                    &screen_space_passes_textures.sm_tex_write.default_view,
                 ),
             });
 

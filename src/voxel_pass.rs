@@ -158,7 +158,7 @@ impl Node for VoxelPassNode {
             tex_view_entry(6, &normal_binding.default_view),
             tex_view_entry(7, &motion_vectors_binding.default_view),
             tex_view_entry(8, &prepass_downsample_texture.0.default_view),
-            tex_view_entry(9, &screen_space_passes_textures.processed_img.default_view),
+            tex_view_entry(9, &screen_space_passes_textures.sm_tex_read.default_view),
             tex_view_entry(10, &voxel_pass_textures.read.default_view),
             tex_view_entry(11, &voxel_pass_textures.write.default_view),
         ];
