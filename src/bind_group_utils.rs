@@ -291,7 +291,7 @@ pub fn prepass_get_bind_group_layout_entries(
         // Depth texture
         BindGroupLayoutEntry {
             binding: bindings[0],
-            visibility: ShaderStages::COMPUTE,
+            visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
             ty: BindingType::Texture {
                 multisampled,
                 sample_type: TextureSampleType::Depth,
@@ -302,7 +302,7 @@ pub fn prepass_get_bind_group_layout_entries(
         // Normal texture
         BindGroupLayoutEntry {
             binding: bindings[1],
-            visibility: ShaderStages::COMPUTE,
+            visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
             ty: BindingType::Texture {
                 multisampled,
                 sample_type: TextureSampleType::Float { filterable: false },
@@ -313,7 +313,7 @@ pub fn prepass_get_bind_group_layout_entries(
         // Motion Vectors texture
         BindGroupLayoutEntry {
             binding: bindings[2],
-            visibility: ShaderStages::COMPUTE,
+            visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
             ty: BindingType::Texture {
                 multisampled,
                 sample_type: TextureSampleType::Float { filterable: false },

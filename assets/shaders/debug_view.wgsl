@@ -25,12 +25,13 @@ var screen_passes_processed: texture_2d_array<f32>;
 @group(0) @binding(8)
 var voxel_cache: texture_3d<f32>;
 @group(0) @binding(9)
-var motion_vector_prepass_texture: texture_2d<f32>;
-@group(0) @binding(10)
 var depth_prepass_texture: texture_depth_2d;
-@group(0) @binding(11)
+@group(0) @binding(10)
 var normal_prepass_texture: texture_2d<f32>;
+@group(0) @binding(11)
+var motion_vector_prepass_texture: texture_2d<f32>;
 
+#import bevy_pbr::prepass_utils
 #import "shaders/voxel_cache.wgsl"
 
 
@@ -41,6 +42,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, in.uv, 0.0);
     let prev_frame = textureSampleLevel(prev_frame_tex, linear_sampler, in.uv, 0.0);
     let world_position = position_ndc_to_world(vec3(uv_to_ndc(in.uv), nor_depth.w));
+    let closest_motion_vector = prepass_motion_vector(vec4<f32>(frag_coord.xy, 0.0, 0.0), 0u).xy;
     let V = normalize(world_position - view.world_position.xyz);
 
     let last_world_cache = textureLoad(voxel_cache, vec3<i32>(position_world_to_fvoxel(world_position)), 0);
@@ -53,5 +55,6 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
 
     //return frame_col;
     //return vec4(vec3(last_world_cache.rgb), 1.0);
-    return vec4(vec3(frame_col.rgb), 1.0); //hit.color * 
+    return vec4(vec3(frame_col.rgb), 1.0);
+    //return vec4(closest_motion_vector, 0.0, 1.0);
 }
