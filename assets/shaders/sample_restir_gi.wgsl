@@ -1,10 +1,10 @@
 
 fn sample_restir_gi(diffuse_color: vec3<f32>, screen_uv: vec2<f32>, surface_normal: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
-    let screen_passes_processed_size = vec2<f32>(textureDimensions(screen_passes_processed).xy);
+    let fullscreen_passes_processed_size = vec2<f32>(textureDimensions(fullscreen_passes_processed).xy);
 
-    var proposed_pos = textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 0u, 0).xyz;
-    let weight_data = textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 1u, 0).xyz;
-    var proposed_col = textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 4u, 0).xyz;
+    var proposed_pos = textureLoad(fullscreen_passes_processed, vec2<i32>(screen_uv * fullscreen_passes_processed_size), 0u, 0).xyz;
+    let weight_data = textureLoad(fullscreen_passes_processed, vec2<i32>(screen_uv * fullscreen_passes_processed_size), 1u, 0).xyz;
+    var proposed_col = textureLoad(fullscreen_passes_processed, vec2<i32>(screen_uv * fullscreen_passes_processed_size), 4u, 0).xyz;
     var M = u32(weight_data.x);
     var w_sum = weight_data.y;
     var weight = weight_data.z;

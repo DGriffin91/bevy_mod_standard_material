@@ -223,8 +223,8 @@ fn pbr(
     indirect_light += sample_restir_gi(diffuse_color, screen_uv, in.N, in.world_position.xyz);
 
     // SSR
-    let screen_passes_processed_size = vec2<f32>(textureDimensions(screen_passes_processed).xy);
-    indirect_light += textureLoad(screen_passes_processed, vec2<i32>(screen_uv * screen_passes_processed_size), 6u, 0).xyz;
+    let fullscreen_passes_processed_size = vec2<f32>(textureDimensions(fullscreen_passes_processed).xy);
+    indirect_light += textureLoad(fullscreen_passes_processed, vec2<i32>(screen_uv * fullscreen_passes_processed_size), 5u, 0).xyz;
     // ------------------
     // ------------------
     // ------------------

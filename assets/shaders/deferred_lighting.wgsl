@@ -18,6 +18,8 @@
 
 @group(0) @binding(20)
 var screen_passes_processed: texture_2d_array<f32>;
+@group(0) @binding(21)
+var fullscreen_passes_processed: texture_2d_array<f32>;
 
 #import "shaders/sample_restir_gi.wgsl"
 

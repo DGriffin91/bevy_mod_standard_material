@@ -37,7 +37,7 @@ use bevy::{
 };
 
 const WORKGROUP_SIZE: u32 = 8;
-const LAYERS: u32 = 8;
+const LAYERS: u32 = 9;
 const SCALE_FACTOR: u32 = 2;
 
 #[derive(Component, ExtractComponent, Clone)]
@@ -139,7 +139,10 @@ impl Node for ScreenSpacePassesNode {
 
         let pipeline_cache = world.resource::<PipelineCache>();
 
-        let Some(update_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.pipeline_id) else {
+        let Some(candidates_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.candidates_pipeline_id) else {
+            return Ok(());
+        };
+        let Some(restir_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.restir_pipeline_id) else {
             return Ok(());
         };
         let Some(blur_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.blur_pipeline_id) else {
@@ -184,15 +187,15 @@ impl Node for ScreenSpacePassesNode {
 
         
 
-        let w = screen_space_passes_textures.sm_tex_read.texture.width();
-        let h = screen_space_passes_textures.sm_tex_read.texture.height();
+
+        
 
         {
             let bind_group =
                 render_context
                     .render_device()
                     .create_bind_group(&BindGroupDescriptor {
-                        label: Some("ScreenSpacePassesNode_bind_group"),
+                        label: Some("ScreenSpacePassesNode_bind_group_candidates"),
                         layout: &pipeline.layout,
                         entries: &entries,
                     });
@@ -201,8 +204,10 @@ impl Node for ScreenSpacePassesNode {
                 .command_encoder()
                 .begin_compute_pass(&ComputePassDescriptor::default());
 
-            pass.set_pipeline(update_pipeline);
+            pass.set_pipeline(candidates_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
+            let w = screen_space_passes_textures.sm_tex_read.texture.width();
+            let h = screen_space_passes_textures.sm_tex_read.texture.height();
             pass.dispatch_workgroups(w / WORKGROUP_SIZE, h / WORKGROUP_SIZE, 1);
         }
 
@@ -212,6 +217,41 @@ impl Node for ScreenSpacePassesNode {
             let b = entries[1].binding;
             entries[0].binding = b;
             entries[1].binding = a;
+            
+            let bind_group =
+                render_context
+                    .render_device()
+                    .create_bind_group(&BindGroupDescriptor {
+                        label: Some("ScreenSpacePassesNode_bind_group_restir"),
+                        layout: &pipeline.layout,
+                        entries: &entries,
+                    });
+
+            let mut pass = render_context
+                .command_encoder()
+                .begin_compute_pass(&ComputePassDescriptor::default());
+
+            pass.set_pipeline(restir_pipeline);
+            pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
+            let w = screen_space_passes_textures.full_tex_read.texture.width();
+            let h = screen_space_passes_textures.full_tex_read.texture.height();
+            pass.dispatch_workgroups(
+                // make sure we are >= target_image.size
+                (w as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+                (h as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1);
+        }
+
+        {
+            // swap prev and next target
+            let a = entries[0].binding;
+            let b = entries[1].binding;
+            entries[0].binding = b;
+            entries[1].binding = a;
+
+            let a = entries[2].binding;
+            let b = entries[3].binding;
+            entries[2].binding = b;
+            entries[3].binding = a;
 
             let bind_group =
                 render_context
@@ -228,7 +268,12 @@ impl Node for ScreenSpacePassesNode {
 
             pass.set_pipeline(blur_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
-            pass.dispatch_workgroups(w / WORKGROUP_SIZE, h / WORKGROUP_SIZE, 1);
+            let w = screen_space_passes_textures.full_tex_read.texture.width();
+            let h = screen_space_passes_textures.full_tex_read.texture.height();
+            pass.dispatch_workgroups(
+                // make sure we are >= target_image.size
+                (w as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+                (h as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1);
         }
 
         Ok(())
@@ -239,8 +284,9 @@ impl Node for ScreenSpacePassesNode {
 struct TracePipeline {
     layout: BindGroupLayout,
     sampler: Sampler,
-    pipeline_id: CachedComputePipelineId,
+    restir_pipeline_id: CachedComputePipelineId,
     blur_pipeline_id: CachedComputePipelineId,
+    candidates_pipeline_id: CachedComputePipelineId,
 }
 
 impl FromWorld for TracePipeline {
@@ -303,6 +349,15 @@ impl FromWorld for TracePipeline {
             MAX_CASCADES_PER_LIGHT as u32,
         ));
 
+        let candidates_pipeline_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+            label: None,
+            layout: vec![layout.clone()],
+            push_constant_ranges: Vec::new(),
+            shader: shader.clone(),
+            shader_defs: shader_defs.clone(),
+            entry_point: Cow::from("candidates"),
+        });
+
         let pipeline_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
             label: None,
             layout: vec![layout.clone()],
@@ -324,7 +379,8 @@ impl FromWorld for TracePipeline {
         Self {
             layout,
             sampler,
-            pipeline_id,
+            candidates_pipeline_id,
+            restir_pipeline_id: pipeline_id,
             blur_pipeline_id,
         }
     }

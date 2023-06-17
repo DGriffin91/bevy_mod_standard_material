@@ -308,6 +308,16 @@ impl FromWorld for CustomDeferredLightingLayout {
             },
             count: None,
         });
+        entries.push(BindGroupLayoutEntry {
+            binding: 21,
+            visibility: ShaderStages::FRAGMENT,
+            ty: BindingType::Texture {
+                sample_type: TextureSampleType::Float { filterable: true },
+                view_dimension: TextureViewDimension::D2Array,
+                multisampled: false,
+            },
+            count: None,
+        });
 
         let bind_group_layout =
             render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -516,6 +526,12 @@ pub fn queue_deferred_lighting_bind_groups(
                 binding: 20,
                 resource: BindingResource::TextureView(
                     &screen_space_passes_textures.sm_tex_write.default_view,
+                ),
+            });
+            entries.push(BindGroupEntry {
+                binding: 21,
+                resource: BindingResource::TextureView(
+                    &screen_space_passes_textures.full_tex_write.default_view,
                 ),
             });
 
