@@ -5,7 +5,7 @@
 
 // comment out to disable
 //#define SPECULAR_SCREEN_SAMPLE
-//#define DIFFUSE_SCREEN_SAMPLE
+//#define CDIFFUSE_SCREEN_SAMPLE
 #define SPECULAR
 #define CDIFFUSE_INDIRECT
 //#define CDIFFUSE_DIRECT
@@ -101,20 +101,30 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
     cand.ray_hit_pos = ray.origin + ray.direction * cand.distance;
     cand.direction = direction;
     var hit_color = get_hit_material(query).color;
+    var tot_w = 0.0;
 
     // first see if we hit somewhere on the screen
-
+#ifdef CDIFFUSE_SCREEN_SAMPLE
+    let screen_color = get_screen_color_from_pos(cand.ray_hit_pos, ray.direction);
+    if screen_color.x != -1.0 {
+        // TODO better firefly suppression
+        cand.color += clamp(screen_color, vec3(0.0), vec3(50.0));
+        tot_w += 1.0;
+    }
+#endif
     // Trace to sun
     if query.hit.distance != F32_MAX && query.hit.distance > 0.0 {
         var sray = new_ray(cand.ray_hit_pos, -sun_dir);
         query = scene_query(sray);
         if query.hit.distance == F32_MAX {
-            cand.color = hit_color * sun_color * nee;
+            cand.color += hit_color * sun_color * nee;
+            tot_w += 1.0;
         }
     } else {
-        cand.color = hit_color * sky_color;    
+        cand.color += hit_color * sky_color;    
+        tot_w += 1.0;
     }
-    //cand.color = vec3(saturate(cand.distance));
+    cand.color = max(cand.color / tot_w, vec3(0.0));
 
     return cand;
 }

@@ -525,13 +525,13 @@ pub fn queue_deferred_lighting_bind_groups(
             entries.push(BindGroupEntry {
                 binding: 20,
                 resource: BindingResource::TextureView(
-                    &screen_space_passes_textures.sm_tex_write.default_view,
+                    &screen_space_passes_textures.sm_tex_read.default_view,
                 ),
             });
             entries.push(BindGroupEntry {
                 binding: 21,
                 resource: BindingResource::TextureView(
-                    &screen_space_passes_textures.full_tex_write.default_view,
+                    &screen_space_passes_textures.full_tex_read.default_view,
                 ),
             });
 
