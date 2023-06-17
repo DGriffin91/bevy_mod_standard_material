@@ -14,6 +14,8 @@
 
 struct Candidate {
     color: vec3<f32>,
+    world_position: vec3<f32>,
+    ray_hit_pos: vec3<f32>,
     direction: vec3<f32>,
     distance: f32,
 }
@@ -24,8 +26,10 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
 
     var cand: Candidate;
     cand.color = vec3(0.0);
-    cand.direction = vec3(0.0);
+    cand.world_position = vec3(0.0);
+    cand.ray_hit_pos = vec3(0.0);
     cand.distance = -1.0;
+    cand.direction = vec3(0.0);
 
     let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
     let flocation = vec2<f32>(location);
@@ -83,24 +87,26 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
     //let urand = fract_white_noise_for_pixel(ifrag_coord, globals.frame_count + 1425u, white_frame_noise);
 
     //cand.direction = urand.xyz;
-    cand.direction = cosine_sample_hemisphere(urand.xy);
-    cand.direction = normalize(cand.direction * tangent_to_world);
+    var direction = cosine_sample_hemisphere(urand.xy);
+    direction = normalize(direction * tangent_to_world);
 
 
     // random direction trace
-    var ray = new_ray(world_position + V * pri_dist_bias + surface_normal * pri_normal_bias, cand.direction);
+    var ray = new_ray(world_position + V * pri_dist_bias + surface_normal * pri_normal_bias, direction);
 
     var query = scene_query(ray);
 
+    cand.world_position = ray.origin;
     cand.distance = query.hit.distance;
-    var ray_hit_pos = ray.origin + ray.direction * cand.distance;
+    cand.ray_hit_pos = ray.origin + ray.direction * cand.distance;
+    cand.direction = direction;
     var hit_color = get_hit_material(query).color;
 
     // first see if we hit somewhere on the screen
 
     // Trace to sun
-    if cand.distance != F32_MAX {
-        var sray = new_ray(ray_hit_pos, -sun_dir);
+    if query.hit.distance != F32_MAX && query.hit.distance > 0.0 {
+        var sray = new_ray(cand.ray_hit_pos, -sun_dir);
         query = scene_query(sray);
         if query.hit.distance == F32_MAX {
             cand.color = hit_color * sun_color * nee;

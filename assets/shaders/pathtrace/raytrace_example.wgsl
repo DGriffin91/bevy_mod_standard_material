@@ -27,7 +27,9 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     //textureStore(target_tex, location, 0u, reference_update(invocation_id));
     let cand = candidates_update(invocation_id);
     textureStore(target_tex, location, 0u, vec4(cand.color, 0.0));
-    textureStore(target_tex, location, 1u, vec4(cand.direction, cand.distance));
+    textureStore(target_tex, location, 1u, vec4(cand.world_position, 0.0));
+    textureStore(target_tex, location, 2u, vec4(cand.ray_hit_pos, cand.distance));
+    //textureStore(target_tex, location, 3u, vec4(cand.direction, 0.0));
 }
 
 /*

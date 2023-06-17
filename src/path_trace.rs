@@ -50,7 +50,7 @@ use bevy_mod_bvh::{
 };
 
 const WORKGROUP_SIZE: u32 = 8;
-const LAYERS: u32 = 3;
+const LAYERS: u32 = 5;
 
 #[derive(Component, ExtractComponent, Clone)]
 pub struct PathTrace;

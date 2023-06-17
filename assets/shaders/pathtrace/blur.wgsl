@@ -52,4 +52,6 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 */
     textureStore(target_tex, location, 0u, textureLoad(prev_tex, location, 0u, 0));
     textureStore(target_tex, location, 1u, textureLoad(prev_tex, location, 1u, 0));
+    textureStore(target_tex, location, 2u, textureLoad(prev_tex, location, 2u, 0));
+    textureStore(target_tex, location, 3u, textureLoad(prev_tex, location, 3u, 0));
 }
