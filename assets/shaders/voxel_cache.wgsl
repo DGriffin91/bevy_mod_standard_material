@@ -1,5 +1,5 @@
 //kitchen
-const VOXEL_GRID_SIZE = 128;
+const VOXEL_GRID_SIZE = 96;
 const VOXEL_SIZE = 0.25;
 
 

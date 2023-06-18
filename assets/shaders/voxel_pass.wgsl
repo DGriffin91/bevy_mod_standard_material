@@ -101,8 +101,8 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
     //let location = deinterleave3(
     //    invocation_id.x +
-    //    invocation_id.y * 128u +
-    //    invocation_id.z * 128u * 128u
+    //    invocation_id.y * 96u +
+    //    invocation_id.z * 96u * 96u
     //);
 
 

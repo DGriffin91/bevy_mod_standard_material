@@ -5,15 +5,19 @@ Move voxels with view, needs to happen in voxel rate pass or equivalent
 Optimize voxel traversal, we understep currently so we naively hit every voxel
 */
 
-#define RAY_MARCH
-#define USE_VOXEL_FALLBACK
+//#define RAY_MARCH
+//#define USE_VOXEL_FALLBACK
 #define FILTER_SSGI
+#define APPLY_FILTER_TO_OUTPUT
 #define USE_PATH_TRACED
 #define SSAO_FOCUS
 #define SSAO
+#define RESTIR_ANTI_CLUMPING
 #define SSR
-const SSR_SAMPLES = 10u;
-const FULL_SSR_SAMPLES = 1u;
+const SSR_SAMPLES = 0u;
+const FULL_SSR_SAMPLES = 12u;
+const MAX_M = 4096u;
+
 
 @group(0) @binding(4)
 var blue_noise_tex: texture_2d_array<f32>;
@@ -201,7 +205,6 @@ fn screentrace(ufrag_coord: vec2<u32>, probe_pos: vec3<f32>, TBN: mat3x3<f32>) -
 }
 
 fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, samples: u32) {
-    let MAX_M = 1024u;
 
     let ufrag_coord = vec2<u32>(ifrag_coord.xy);
     let itex_dims = vec2<i32>(textureDimensions(fullscreen_passes_read).xy);
@@ -227,7 +230,8 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
     var pt_accum_tot_gr = 0.0;
 
     var probe_pos = world_position_offs;
-    var proposed_pos = vec3(F32_MAX);
+    var ray_hit_pos = vec3(F32_MAX);
+    var weight_data = vec4(0.0);
     var M = 0u;
     var w_sum = 0.0;
     var weight = 0.0;
@@ -270,8 +274,8 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
 
         sample_coord = screen_space_passes_coord + selected_offset;
         let sample_uv = (vec2<f32>(sample_coord) + 0.5) / vec2<f32>(tex_dims);
-        proposed_pos = textureLoad(fullscreen_passes_read, sample_coord, 0u, 0).xyz;
-        let weight_data = textureLoad(fullscreen_passes_read, sample_coord, 1u, 0).xyz;
+        ray_hit_pos = textureLoad(fullscreen_passes_read, sample_coord, 0u, 0).xyz;
+        weight_data = textureLoad(fullscreen_passes_read, sample_coord, 1u, 0);
         probe_latest_color = textureLoad(fullscreen_passes_read, sample_coord, 3u, 0).xyz;
         probe_color = textureSampleLevel(fullscreen_passes_read, linear_sampler, screen_history_uv, 4u, 0.0).xyz;
 
@@ -281,8 +285,8 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
     }
 
     // if closest probe is too far, reset reservoir
-    if distance(probe_pos, world_position_offs) > 0.1 || !history_hit_screen {
-        proposed_pos = vec3(F32_MAX);
+    if distance(probe_pos, world_position_offs) > 0.05 || !history_hit_screen {
+        ray_hit_pos = vec3(F32_MAX);
         M = 0u;
         w_sum = 0.0;
         weight = 0.0;
@@ -290,7 +294,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
     }
 
     if M == 0u {
-        proposed_pos = vec3(F32_MAX);
+        ray_hit_pos = vec3(F32_MAX);
         probe_pos = world_position_offs;
     }
 
@@ -369,12 +373,12 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
 
             var threshold = new_weight / w_sum;
 
-            if i == 0u && (M == 0u || proposed_pos.x == F32_MAX) {
+            if i == 0u && (M == 0u || ray_hit_pos.x == F32_MAX) {
                 threshold = 1.0;
             }
 
             if threshold > urand.z {
-                proposed_pos = st.pos;
+                ray_hit_pos = st.pos;
                 weight = new_weight;
                 probe_latest_color = st.color;
             }
@@ -425,8 +429,8 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
             let color = textureLoad(path_trace_image, coord, 0u, 0).rgb;
             let pt_world_position = textureLoad(path_trace_image, coord, 1u, 0).xyz;
             let ray_hit = textureLoad(path_trace_image, coord, 2u, 0);
-            let ray_hit_pos = ray_hit.xyz;
-            let direction = normalize(ray_hit_pos - pt_world_position);
+            let new_ray_hit_pos = ray_hit.xyz;
+            let direction = normalize(new_ray_hit_pos - pt_world_position);
             let dist = ray_hit.w;
             
             let probe_to_cand_distance = distance(probe_pos, pt_world_position);
@@ -455,14 +459,14 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
 
             var threshold = new_weight / w_sum;
 
-            //if M == 0u || proposed_pos.x == F32_MAX {
+            //if M == 0u || ray_hit_pos.x == F32_MAX {
             //    threshold = 1.0;
             //}
 
 
 
             if threshold > urand.z {
-                proposed_pos = ray_hit_pos;
+                ray_hit_pos = new_ray_hit_pos;
                 weight = new_weight;
                 probe_latest_color = color;
             }
@@ -481,12 +485,12 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
     }
 #endif //USE_PATH_TRACED
 
-    let dist_to_hit = distance(proposed_pos, world_position_offs);
-    let direction = normalize(proposed_pos - world_position_offs);
+    let dist_to_hit = distance(ray_hit_pos, world_position_offs);
+    let direction = normalize(ray_hit_pos - world_position_offs);
     let brdf = max(dot(pbr.N, direction), 0.0);
 
     let falloff = (1.0 / (1.0 + dist_to_hit * dist_to_hit));
-    var hysterisis = 1.0;
+    var hysterisis = 0.2;
     //hysterisis = mix(0.5, hysterisis, saturate(f32(M) / f32(MAX_M)));
     let w = w_sum / max(0.00001, f32(M) * weight);
 
@@ -509,15 +513,15 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
     
 
 
-    textureStore(fullscreen_passes_write, ifrag_coord, 0u, vec4(proposed_pos, 0.0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 1u, vec4(f32(M), w_sum, weight, 0.0));
+    textureStore(fullscreen_passes_write, ifrag_coord, 0u, vec4(ray_hit_pos, 0.0));
+    textureStore(fullscreen_passes_write, ifrag_coord, 1u, vec4(f32(M), w_sum, weight, weight_data.w));
     textureStore(fullscreen_passes_write, ifrag_coord, 2u, vec4(probe_pos, 0.0));
     textureStore(fullscreen_passes_write, ifrag_coord, 3u, vec4(probe_latest_color, 0.0));
     textureStore(fullscreen_passes_write, ifrag_coord, 4u, vec4(probe_color, 0.0));
 
 
 #ifdef SSR
-    var ssr_hysterisis = 0.2;
+    var ssr_hysterisis = 0.1;
 
     let F0 = get_f0(pbr.material.reflectance, pbr.material.metallic, pbr.material.base_color.rgb);
     let roughness = perceptualRoughnessToRoughness(pbr.material.perceptual_roughness);
@@ -659,6 +663,8 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let frag_size = 1.0 / fsize;
     let screen_uv = flocation / fsize + frag_size * 0.5; // TODO verify
 
+    var color_distance = 0.0;
+
 #ifdef FILTER_SSGI
     let v = textureSampleLevel(fullscreen_passes_read, linear_sampler, screen_uv, 4, 0.0);
     let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 0.0);
@@ -669,9 +675,10 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     var tot = vec3(0.0);
     var tot_w = 0.0;
     let samples = 12u;
-    let range = mix(18.0, 22.0, urand.z);
-    let center_weight = 0.5;
-    tot += textureLoad(fullscreen_passes_read, location, 4, 0).xyz * center_weight;
+    let range = mix(12.0, 18.0, urand.z);
+    let center_weight = 0.1;
+    let center_color = textureLoad(fullscreen_passes_read, location, 4, 0).xyz;
+    tot += center_color * center_weight;
     tot_w += center_weight;
     let center = textureLoad(fullscreen_passes_read, location, 4, 0);
     for (var i = 0u; i <= samples; i+=1u) {
@@ -698,30 +705,88 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         tot += col.rgb * w;
         tot_w += w;
     }
-    textureStore(fullscreen_passes_write, location, 4, vec4(tot/tot_w, 1.0));
+    let final_color = tot/tot_w;
+    color_distance = distance(center_color, final_color);
+#ifdef APPLY_FILTER_TO_OUTPUT
+    textureStore(fullscreen_passes_write, location, 4, vec4(final_color, 1.0));
 #else
     textureStore(fullscreen_passes_write, location, 4, textureLoad(fullscreen_passes_read, location, 4, 0));
-#endif //FILTER_SSGI
+#endif // APPLY_FILTER_TO_OUTPUT
+#else
+    textureStore(fullscreen_passes_write, location, 4, textureLoad(fullscreen_passes_read, location, 4, 0));
+#endif // FILTER_SSGI
 
 
-    textureStore(screen_passes_write, location, 0, textureLoad(screen_passes_read, location, 0, 0));
-    textureStore(screen_passes_write, location, 1, textureLoad(screen_passes_read, location, 1, 0));
-    textureStore(screen_passes_write, location, 2, textureLoad(screen_passes_read, location, 2, 0));
-    textureStore(screen_passes_write, location, 3, textureLoad(screen_passes_read, location, 3, 0));
-    textureStore(screen_passes_write, location, 4, textureLoad(screen_passes_read, location, 4, 0));
-    textureStore(screen_passes_write, location, 5, textureLoad(screen_passes_read, location, 5, 0));
-    textureStore(screen_passes_write, location, 6, textureLoad(screen_passes_read, location, 6, 0));
-    textureStore(screen_passes_write, location, 7, textureLoad(screen_passes_read, location, 7, 0));
-    textureStore(screen_passes_write, location, 8, textureLoad(screen_passes_read, location, 8, 0));
+    textureStore(screen_passes_write, location, 0u, textureLoad(screen_passes_read, location, 0u, 0));
+    textureStore(screen_passes_write, location, 1u, textureLoad(screen_passes_read, location, 1u, 0));
+    textureStore(screen_passes_write, location, 2u, textureLoad(screen_passes_read, location, 2u, 0));
+    textureStore(screen_passes_write, location, 3u, textureLoad(screen_passes_read, location, 3u, 0));
+    textureStore(screen_passes_write, location, 4u, textureLoad(screen_passes_read, location, 4u, 0));
+    textureStore(screen_passes_write, location, 5u, textureLoad(screen_passes_read, location, 5u, 0));
+    textureStore(screen_passes_write, location, 6u, textureLoad(screen_passes_read, location, 6u, 0));
+    textureStore(screen_passes_write, location, 7u, textureLoad(screen_passes_read, location, 7u, 0));
+    textureStore(screen_passes_write, location, 8u, textureLoad(screen_passes_read, location, 8u, 0));
 
     
-    textureStore(fullscreen_passes_write, location, 0, textureLoad(fullscreen_passes_read, location, 0, 0));
-    textureStore(fullscreen_passes_write, location, 1, textureLoad(fullscreen_passes_read, location, 1, 0));
-    textureStore(fullscreen_passes_write, location, 2, textureLoad(fullscreen_passes_read, location, 2, 0));
-    textureStore(fullscreen_passes_write, location, 3, textureLoad(fullscreen_passes_read, location, 3, 0));
+    textureStore(fullscreen_passes_write, location, 0u, textureLoad(fullscreen_passes_read, location, 0u, 0));
 
-    textureStore(fullscreen_passes_write, location, 5, textureLoad(fullscreen_passes_read, location, 5, 0));
-    textureStore(fullscreen_passes_write, location, 6, textureLoad(fullscreen_passes_read, location, 6, 0));
-    textureStore(fullscreen_passes_write, location, 7, textureLoad(fullscreen_passes_read, location, 7, 0));
-    textureStore(fullscreen_passes_write, location, 8, textureLoad(fullscreen_passes_read, location, 8, 0));
+    textureStore(fullscreen_passes_write, location, 2u, textureLoad(fullscreen_passes_read, location, 2u, 0));
+    textureStore(fullscreen_passes_write, location, 3u, textureLoad(fullscreen_passes_read, location, 3u, 0));
+
+    textureStore(fullscreen_passes_write, location, 5u, textureLoad(fullscreen_passes_read, location, 5u, 0));
+    textureStore(fullscreen_passes_write, location, 6u, textureLoad(fullscreen_passes_read, location, 6u, 0));
+    textureStore(fullscreen_passes_write, location, 7u, textureLoad(fullscreen_passes_read, location, 7u, 0));
+    textureStore(fullscreen_passes_write, location, 8u, textureLoad(fullscreen_passes_read, location, 8u, 0));
+
+    
+    // used to find out if adjacent reservoirs are duplicates
+    let res_hash = hash_noise(location, globals.frame_count + 8275u);
+
+
+#ifdef RESTIR_ANTI_CLUMPING
+    let ray_hit_pos = textureLoad(fullscreen_passes_read, location, 0u, 0).xyz;
+    let weight_data = textureLoad(fullscreen_passes_read, location, 1u, 0);
+    let probe_latest_color = textureLoad(fullscreen_passes_read, location, 4u, 0).xyz;
+
+    var M = u32(weight_data.x);
+    var w_sum = weight_data.y;
+    var weight = weight_data.z;
+
+    var same_pos = 0u;
+    var same_wdata = 0u;
+
+    for (var x = -1; x <= 1; x += 1) {
+        for (var y = -1; y <= 1; y += 1) {
+            let offset = vec2(x, y);
+            if all(offset == vec2(0, 0)) {
+                continue;
+            }
+            let s_ray_hit_pos = textureLoad(fullscreen_passes_read, location + offset, 0u, 0).xyz;
+            let s_weight_data = textureLoad(fullscreen_passes_read, location + offset, 1u, 0);
+            if all(s_ray_hit_pos == ray_hit_pos) {
+                same_pos += 1u;
+            }
+            if all(weight_data == s_weight_data)  {
+                same_wdata += 1u;
+            }
+        }
+    }
+    
+    let noise = fract(blue_noise_for_pixel(ulocation, globals.frame_count) + hash_noise(vec2(0, 0), globals.frame_count + 4275u));
+
+    if same_pos > 0u || color_distance > 1.0 {
+        let derate = mix(f32(same_wdata + same_pos), color_distance, 0.9);
+        let reset_max = u32(f32(MAX_M) * mix(0.1, 0.5, noise / derate));
+        if M > reset_max {
+            let ratio = f32(reset_max) / f32(M);
+            M = reset_max;
+            w_sum = w_sum * ratio;
+        }
+    }
+    textureStore(fullscreen_passes_write, location, 1u, vec4(f32(M), w_sum, weight, res_hash));
+#else // RESTIR_ANTI_CLUMPING
+    var data = textureLoad(fullscreen_passes_read, location, 1u, 0);
+    data.w = res_hash;
+    textureStore(fullscreen_passes_write, location, 1u, data);
+#endif // RESTIR_ANTI_CLUMPING
 }

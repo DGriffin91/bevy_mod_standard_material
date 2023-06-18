@@ -37,7 +37,7 @@ use bevy::{
 };
 
 //const WORKGROUP_SIZE: u32 = 8;
-const SIZE: u32 = 128;
+const SIZE: u32 = 96;
 
 #[derive(Component, ExtractComponent, Clone)]
 pub struct VoxelPass;

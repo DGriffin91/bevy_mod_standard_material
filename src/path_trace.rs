@@ -52,6 +52,8 @@ use bevy_mod_bvh::{
 const WORKGROUP_SIZE: u32 = 8;
 const LAYERS: u32 = 5;
 
+const SCALE_FACTOR: u32 = 4;
+
 #[derive(Component, ExtractComponent, Clone)]
 pub struct PathTrace;
 pub struct PathTracePlugin;
@@ -462,8 +464,8 @@ fn prepare_textures(
 ) {
     for (entity, camera) in &views {
         if let Some(physical_viewport_size) = camera.physical_viewport_size {
-            let width = ((physical_viewport_size.x/ 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
-            let height = ((physical_viewport_size.y / 4) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
+            let width = ((physical_viewport_size.x / SCALE_FACTOR) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
+            let height = ((physical_viewport_size.y / SCALE_FACTOR) / WORKGROUP_SIZE) * WORKGROUP_SIZE;
             let size = Extent3d {
                 width,
                 height,
