@@ -138,11 +138,13 @@ impl Node for DebugViewNode {
             tex_view_entry(5, &prev_frame_tex.0.default_view),
             tex_view_entry(6, &screen_space_passes_textures.sm_tex_read.default_view),
             tex_view_entry(7, &screen_space_passes_textures.sm_tex_write.default_view),
-            tex_view_entry(8, &voxel_pass_textures.write.default_view),
-            tex_view_entry(9, &path_trace_textures.processed_img.default_view),
-            tex_view_entry(10, &depth_view),
-            tex_view_entry(11, &normal_binding.default_view),
-            tex_view_entry(12, &motion_vectors_binding.default_view),
+            tex_view_entry(8, &screen_space_passes_textures.full_tex_read.default_view),
+            tex_view_entry(9, &screen_space_passes_textures.full_tex_write.default_view),
+            tex_view_entry(10, &voxel_pass_textures.write.default_view),
+            tex_view_entry(11, &path_trace_textures.processed_img.default_view),
+            tex_view_entry(12, &depth_view),
+            tex_view_entry(13, &normal_binding.default_view),
+            tex_view_entry(14, &motion_vectors_binding.default_view),
         ];
 
         let bind_group = render_context
@@ -190,12 +192,14 @@ impl FromWorld for DebugViewPipeline {
             image_layout_entry(5, TextureViewDimension::D2),
             image_layout_entry(6, TextureViewDimension::D2Array),
             image_layout_entry(7, TextureViewDimension::D2Array),
-            image_layout_entry(8, TextureViewDimension::D3),
+            image_layout_entry(8, TextureViewDimension::D2Array),
             image_layout_entry(9, TextureViewDimension::D2Array),
+            image_layout_entry(10, TextureViewDimension::D3),
+            image_layout_entry(11, TextureViewDimension::D2Array),
         ];
 
         // Prepass
-        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([10, 11, 12, 13], false)[..3]);
+        entries.extend_from_slice(&prepass_get_bind_group_layout_entries([12, 13, 14, 15], false)[..3]);
 
         let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("debug_view_bind_group_layout"),

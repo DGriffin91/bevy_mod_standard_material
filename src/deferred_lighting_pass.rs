@@ -38,7 +38,12 @@ use bevy::pbr::{
     MAX_DIRECTIONAL_LIGHTS,
 };
 
+use crate::bind_group_utils::{
+    image_layout_entry, sampler_binding_entry, sampler_layout_entry, tex_view_entry,
+};
+use crate::prepass_downsample::PrepassDownsampleTexture;
 use crate::screen_space_passes::ScreenSpacePassesTextures;
+use crate::BlueNoise;
 
 pub struct CustomDeferredLightingPlugin;
 
@@ -318,6 +323,9 @@ impl FromWorld for CustomDeferredLightingLayout {
             },
             count: None,
         });
+        entries.push(image_layout_entry(22, TextureViewDimension::D2Array));
+        entries.push(image_layout_entry(23, TextureViewDimension::D2));
+        entries.push(sampler_layout_entry(24));
 
         let bind_group_layout =
             render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -416,6 +424,7 @@ pub fn queue_deferred_lighting_bind_groups(
             Option<&EnvironmentMapLight>,
             &Tonemapping,
             &ScreenSpacePassesTextures,
+            &PrepassDownsampleTexture,
         ),
         With<DeferredPrepass>,
     >,
@@ -425,6 +434,7 @@ pub fn queue_deferred_lighting_bind_groups(
     globals_buffer: Res<GlobalsBuffer>,
     tonemapping_luts: Res<TonemappingLuts>,
     differed_lighting_layout: Res<CustomDeferredLightingLayout>,
+    blue_noise: Res<BlueNoise>,
 ) {
     let (mut fallback_images, fallback_cubemap) = fallbacks;
     if let (
@@ -448,6 +458,7 @@ pub fn queue_deferred_lighting_bind_groups(
             environment_map,
             tonemapping,
             screen_space_passes_textures,
+            prepass_downsample,
         ) in &views
         {
             let mut entries = vec![
@@ -534,6 +545,15 @@ pub fn queue_deferred_lighting_bind_groups(
                     &screen_space_passes_textures.full_tex_read.default_view,
                 ),
             });
+            let blue_noise = images.get(&blue_noise.0).unwrap();
+            entries.push(tex_view_entry(22, &blue_noise.texture_view));
+            entries.push(tex_view_entry(23, &prepass_downsample.0.default_view));
+            let sampler = render_device.create_sampler(&SamplerDescriptor {
+                mag_filter: FilterMode::Linear,
+                min_filter: FilterMode::Linear,
+                ..SamplerDescriptor::default()
+            });
+            entries.push(sampler_binding_entry(24, &sampler));
 
             let view_bind_group = render_device.create_bind_group(&BindGroupDescriptor {
                 entries: &entries,

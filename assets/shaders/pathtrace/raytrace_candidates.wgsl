@@ -51,11 +51,12 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
 
 
     let samples = 1u;
-    var sun_dir = vec3(-0.25, -0.24, 1.0);
+    var sun_dir = normalize(vec3(-0.25, -0.24, 1.0));
     let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0;
     //var sun_dir = vec3(0.22, -1.0, -0.2); //sponza
     //let sun_color = vec3(0.95, 0.79268, 0.637758) * 10.0; //sponza
-    let sky_color = vec3(1.75, 1.9, 1.99) * 2.0;
+    //let sky_color = vec3(1.75, 1.9, 1.99) * 20.0;
+    let sky_color = pow(vec3(0.875, 0.95, 0.995) * 2.0, vec3(2.2));
     let nee = 1.0; // TODO NEE
 
 
@@ -98,33 +99,115 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
 
     cand.world_position = ray.origin;
     cand.distance = query.hit.distance;
-    cand.ray_hit_pos = ray.origin + ray.direction * cand.distance;
     cand.direction = direction;
-    var hit_color = get_hit_material(query).color;
-    var tot_w = 0.0;
+    var bounce1_falloff = 0.0;
+    var bounce2_falloff = 0.0;
+    var bounce1_color = vec3(0.0);
+    var bounce2_color = vec3(0.0);
+    var bounce1_mat_color = vec3(0.0);
+    var bounce2_mat_color = vec3(0.0);
+    var direct_color = vec3(0.0);
 
     // first see if we hit somewhere on the screen
 #ifdef CDIFFUSE_SCREEN_SAMPLE
     let screen_color = get_screen_color_from_pos(cand.ray_hit_pos, ray.direction);
     if screen_color.x != -1.0 {
         // TODO better firefly suppression
-        cand.color += clamp(screen_color, vec3(0.0), vec3(50.0));
+        bounce1_color += clamp(screen_color, vec3(0.0), vec3(50.0));
         tot_w += 1.0;
     }
 #endif
-    // Trace to sun
     if query.hit.distance != F32_MAX && query.hit.distance > 0.0 {
+        cand.ray_hit_pos = ray.origin + ray.direction * cand.distance;
+        bounce1_falloff = (1.0 / (1.0 + query.hit.distance * query.hit.distance));
+        bounce1_mat_color = get_hit_material(query).color;
+        // Trace to sun
         var sray = new_ray(cand.ray_hit_pos, -sun_dir);
-        query = scene_query(sray);
-        if query.hit.distance == F32_MAX {
-            cand.color += hit_color * sun_color * nee;
-            tot_w += 1.0;
+        let sun_query = scene_query(sray);
+        if sun_query.hit.distance == F32_MAX {
+            bounce1_color += sun_color * nee;
         }
-    } else {
-        cand.color += hit_color * sky_color;    
-        tot_w += 1.0;
+
+        // trace 2nd bounce
+
+
+        let hit_surface_normal = compute_tri_normal(query);
+        let tangent_to_world = build_orthonormal_basis(hit_surface_normal);
+        let white_frame_noise = white_frame_noise(28471u);
+        let urand = fract_blue_noise_for_pixel(ufrag_coord, globals.frame_count + 6329u, white_frame_noise);  
+        var bounce_direction = cosine_sample_hemisphere(urand.xy);
+        bounce_direction = normalize(bounce_direction * tangent_to_world);
+        let origin = cand.ray_hit_pos + -ray.direction * pri_dist_bias + hit_surface_normal * pri_normal_bias;
+        var bray = new_ray(origin, bounce_direction);
+        let bounce_query = scene_query(bray);        
+        if bounce_query.hit.distance != F32_MAX && bounce_query.hit.distance > 0.0 {
+            let bray_hit_pos = bray.origin + bray.direction * bounce_query.hit.distance;
+            bounce2_mat_color = get_hit_material(bounce_query).color;
+            var ray_hit_voxel = ivoxel_clamp(vec3<i32>(position_world_to_fvoxel(bray_hit_pos)));
+            let cache_color = textureLoad(voxel_cache, ray_hit_voxel, 0);
+            bounce2_falloff = (1.0 / (1.0 + bounce_query.hit.distance * bounce_query.hit.distance));
+            // TODO figure out what this (dist_falloff, bounce_mat_color, etc...) should actually be
+            bounce2_color += cache_color.rgb;    
+        } else if bounce_query.hit.distance == F32_MAX {
+            bounce1_color += sky_color;   
+        }
+    } else if query.hit.distance == F32_MAX {
+        cand.ray_hit_pos = ray.origin + ray.direction * 9999.9;
+        direct_color += sky_color;    
     }
-    cand.color = max(cand.color / tot_w, vec3(0.0));
+
+
+
+
+
+    var ray_hit_voxel = ivoxel_clamp(vec3<i32>(position_world_to_fvoxel(cand.ray_hit_pos)));
+    var cache_color = vec4(0.0);
+    if query.hit.distance != F32_MAX {
+        cache_color = textureLoad(voxel_cache, ray_hit_voxel, 0);
+        if cache_color.w <= 0.0 {
+            cache_color = vec4(0.0);
+        }
+    }    
+
+    cand.color = max((
+        direct_color
+        + bounce1_color * bounce1_mat_color * bounce1_falloff
+        + bounce2_color * bounce1_mat_color * bounce2_mat_color * bounce1_falloff * bounce2_falloff
+        ), vec3(0.0));
+
+    if query.hit.distance != F32_MAX && query.hit.distance > 0.0 {
+        if !all(ray_hit_voxel == vec3(0)) {
+            var hysterisis = 0.05;
+            if cache_color.w <= 0.0 {
+                hysterisis = 1.0;
+            }
+            // + bounce2_color * bounce2_mat_color
+            let new_cache_color = max(mix(cache_color.rgb, 
+                bounce1_color
+              + bounce2_color * bounce2_mat_color
+                                        , hysterisis), vec3(0.0));
+            textureStore(voxel_cache_write, ray_hit_voxel, vec4(new_cache_color, f32(globals.time)));
+        }
+    }
+
+    
+    //{
+    //    var hysterisis = 0.05;
+    //    var primary_ray_voxel = ivoxel_clamp(vec3<i32>(position_world_to_fvoxel(world_position)));
+    //    if !all(primary_ray_voxel == vec3(0)) {
+    //        let primary_cache_color = textureLoad(voxel_cache, primary_ray_voxel, 0);
+    //        let new_cache_color = max(mix(primary_cache_color.rgb, cand.color, hysterisis), vec3(0.0));
+    //        textureStore(voxel_cache_write, primary_ray_voxel, vec4(new_cache_color, f32(globals.time)));
+    //    }
+    //}
+
+    
+
+
+    // TODO don't be ridiculous
+    if all(invocation_id == vec3(0u)) {
+        textureStore(voxel_cache_write, vec3(0), textureLoad(voxel_cache, vec3(0), 0));
+    }
 
     return cand;
 }

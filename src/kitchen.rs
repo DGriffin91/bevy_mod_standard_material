@@ -22,7 +22,7 @@ pub struct KitchenPlugin;
 impl Plugin for KitchenPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(DirectionalLightShadowMap { size: 4096 })
-            .insert_resource(ClearColor(Color::rgb(1.75, 1.9, 1.99)))
+            .insert_resource(ClearColor(Color::rgb(0.875, 0.95, 0.995) * 3.0))
             .insert_resource(AmbientLight {
                 color: Color::rgb(1.0, 1.0, 1.0),
                 //brightness: 0.02,
@@ -61,15 +61,15 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         ..default()
     });
 
-    commands.spawn(SceneBundle {
-        scene: asset_server.load("large_models/wet_ground.gltf#Scene0"),
-        ..default()
-    });
-
-    commands.spawn(SceneBundle {
-        scene: asset_server.load("large_models/spheres.gltf#Scene0"),
-        ..default()
-    });
+    //commands.spawn(SceneBundle {
+    //    scene: asset_server.load("large_models/wet_ground.gltf#Scene0"),
+    //    ..default()
+    //});
+    //
+    //commands.spawn(SceneBundle {
+    //    scene: asset_server.load("large_models/spheres.gltf#Scene0"),
+    //    ..default()
+    //});
 
     // Sun
     commands.spawn(DirectionalLightBundle {
@@ -86,14 +86,6 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             shadow_depth_bias: 0.10,
             shadow_normal_bias: 1.5,
         },
-        //cascade_shadow_config: CascadeShadowConfigBuilder {
-        //    num_cascades: 4,
-        //    minimum_distance: 0.01,
-        //    maximum_distance: 50.0,
-        //    first_cascade_far_bound: 3.0,
-        //    overlap_proportion: 0.2,
-        //}
-        //.into(),
         cascade_shadow_config: CascadeShadowConfig {
             /// The (positive) distance to the far boundary of each cascade.
             bounds: vec![6.0],
@@ -106,7 +98,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     });
 
     let mut bloom_settings = BloomSettings::NATURAL;
-    bloom_settings.intensity *= 0.35;
+    bloom_settings.intensity *= 0.15;
     // Camera
     commands
         .spawn((

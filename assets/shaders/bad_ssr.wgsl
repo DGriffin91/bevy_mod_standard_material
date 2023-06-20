@@ -47,7 +47,18 @@ fn bad_ssr(ifrag_coord: vec2<i32>, surface_normal: vec3<f32>, world_position: ve
             if backface < 0.01 {
                 let closest_motion_vector = prepass_motion_vector(vec4<f32>(raymarch_result.hit_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
                 let history_uv = raymarch_result.hit_uv - closest_motion_vector;
-                if history_uv.x > 0.0 && history_uv.x < 1.0 && history_uv.y > 0.0 && history_uv.y < 1.0 {
+                if all(history_uv > vec2(0.0)) && all(history_uv < vec2(1.0)) {
+                    let prev_frame1 = textureSampleLevel(prev_frame_tex, linear_sampler, history_uv, lod_rough).rgb;
+                    contribution += prev_frame1;
+                }
+            }
+        } else if raymarch_result.hit_t > 0.99 {
+            let ray_end_uv = ndc_to_uv(position_world_to_ndc(world_position + trace_dir_ws * raymarch_distance).xy);
+            let hit_depth = textureSampleLevel(prepass_downsample, linear_sampler, ray_end_uv, 0.0).w;
+            if hit_depth == 0.0 { //hit sky
+                let closest_motion_vector = prepass_motion_vector(vec4<f32>(ray_end_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
+                let history_uv = ray_end_uv - closest_motion_vector;
+                if all(history_uv > vec2(0.1)) && all(history_uv < vec2(0.9)) {
                     let prev_frame1 = textureSampleLevel(prev_frame_tex, linear_sampler, history_uv, lod_rough).rgb;
                     contribution += prev_frame1;
                 }

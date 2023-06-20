@@ -32,7 +32,7 @@ var screen_passes_processed: texture_2d_array<f32>;
 @group(0) @binding(10)
 var voxel_cache: texture_3d<f32>;
 @group(0) @binding(11)
-var voxel_cache_next: texture_storage_3d<rgba32float, write>;
+var voxel_cache_write: texture_storage_3d<rgba32float, write>;
 
 /*
 This is a voxel rate shader that checks if the fragment depth is intersecting with a voxel
@@ -53,7 +53,7 @@ This is a voxel rate shader that checks if the fragment depth is intersecting wi
 #define VOXEL_3D
 #import "shaders/voxel_cache.wgsl"
 
-//#define PREVIEW_MODE
+#define PREVIEW_MODE
 
 // Morton order of 3D space in GLSL
 // https://gist.github.com/franjaviersans/885c136932ef37d8905a6433d0828be6
@@ -160,10 +160,10 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
             color = textureLoad(prev_frame_tex, vec2<i32>(history_uv * view.viewport.zw), 0).rgb;
             let hysteresis = 0.1;
             color = mix(prev_voxel.rgb, color.rgb, hysteresis);
-            //textureStore(voxel_cache_next, vec3(location), vec4(a, 0.0, 0.0, f32(globals.time)));
-            textureStore(voxel_cache_next, vec3(location), vec4(color.rgb, f32(globals.time)));
+            //textureStore(voxel_cache_write, vec3(location), vec4(a, 0.0, 0.0, f32(globals.time)));
+            textureStore(voxel_cache_write, vec3(location), vec4(color.rgb, f32(globals.time)));
         } else if closer_than_screen {
-            textureStore(voxel_cache_next, vec3(location), vec4(0.0));
+            textureStore(voxel_cache_write, vec3(location), vec4(0.0));
         } else {
             updated = false;
         }
@@ -177,9 +177,9 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     // checking against vec3(0) so we don't copy the view pos
     if !updated && !all(location == vec3(0)) && !all((location + voxel_delta) == vec3(0)) {
         // for voxels out of sight, move their data relative to the view
-        textureStore(voxel_cache_next, vec3(location), prev_voxel);
+        textureStore(voxel_cache_write, vec3(location), prev_voxel);
     }
 
     // TODO, move view.world_position elsewhere
-    textureStore(voxel_cache_next, vec3(0), vec4(view.world_position.xyz, F32_MAX));
+    textureStore(voxel_cache_write, vec3(0), vec4(view.world_position.xyz, F32_MAX));
 }

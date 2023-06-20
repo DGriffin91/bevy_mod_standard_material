@@ -201,10 +201,7 @@ fn find_root(hrf: HybridRootFinder, drd: DepthRaymarchDistanceFn, start: vec3<f3
             min_d = candidate_d;
 
             for (var step = 1u; step < hrf.linear_steps; step += 1u) {
-                // TODO If using TAA:
                 let candidate_t = min_t + step_size;
-                // TODO If not using TAA:
-                //let candidate_t = min_t + step_size + step_size * interleaved_gradient_noise(cs_to_uv(candidate.xy * drd.depth_tex_size), step);
 
                 let candidate = start + dir * candidate_t;
                 let candidate_d = distance_fn(drd, candidate, candidate_t);

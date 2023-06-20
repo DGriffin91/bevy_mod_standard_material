@@ -38,7 +38,7 @@ use bevy::{
 
 const WORKGROUP_SIZE: u32 = 8;
 const LAYERS: u32 = 9;
-const SCALE_FACTOR: u32 = 4;
+const SCALE_FACTOR: u32 = 2;
 
 #[derive(Component, ExtractComponent, Clone)]
 pub struct ScreenSpacePasses;

@@ -3,12 +3,18 @@
 #import bevy_pbr::mesh_types
 #import bevy_pbr::mesh_view_bindings
 
+#import bevy_coordinate_systems::transformations
+
 #import bevy_pbr::prepass_utils
 #import bevy_pbr::pbr_types
 #import bevy_pbr::utils
 #import bevy_pbr::clustered_forward
 #import bevy_pbr::lighting
-#import bevy_pbr::shadows
+#import "shaders/sampling.wgsl"
+#import "shaders/depth_buffer_raymarching.wgsl"
+#import "shaders/contact_shadows.wgsl"
+#import "shaders/shadows.wgsl"
+//#import bevy_pbr::shadows
 #import bevy_pbr::fog
 //#import bevy_pbr::pbr_functions
 #import "shaders/pbr_functions_deferred.wgsl"
@@ -20,6 +26,13 @@
 var screen_passes_processed: texture_2d_array<f32>;
 @group(0) @binding(21)
 var fullscreen_passes_processed: texture_2d_array<f32>;
+@group(0) @binding(22)
+var blue_noise_tex: texture_2d_array<f32>;
+const BLUE_NOISE_TEX_DIMS = vec3<u32>(64u, 64u, 64u);
+@group(0) @binding(23)
+var prepass_downsample: texture_2d<f32>;
+@group(0) @binding(24)
+var linear_sampler: sampler;
 
 #import "shaders/sample_restir_gi.wgsl"
 

@@ -290,16 +290,21 @@ fn prepare_textures(
         texture_descriptor.label = Some("VoxelPassesTexture2");
         let texture_2 = texture_cache.get(&render_device, texture_descriptor);
 
-        let textures = if frame_count.0 % 2 == 0 {
-            VoxelPassTextures {
-                write: texture_1,
-                read: texture_2,
-            }
-        } else {
-            VoxelPassTextures {
-                write: texture_2,
-                read: texture_1,
-            }
+        //let textures = if frame_count.0 % 2 == 0 {
+        //    VoxelPassTextures {
+        //        write: texture_1,
+        //        read: texture_2,
+        //    }
+        //} else {
+        //    VoxelPassTextures {
+        //        write: texture_2,
+        //        read: texture_1,
+        //    }
+        //};
+
+        let textures = VoxelPassTextures {
+            write: texture_1,
+            read: texture_2,
         };
 
         commands.entity(entity).insert(textures);

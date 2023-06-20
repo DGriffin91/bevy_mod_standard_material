@@ -6,6 +6,8 @@ const PHIMINUS1: f32 = 0.61803398875;
 
 const F32_EPSILON: f32 = 1.1920929E-7;
 const F32_MAX: f32 = 3.402823466E+38;
+const F16_MAX: f32 = 65504.0;
+
 const U32_MAX: u32 = 0xFFFFFFFFu;
 
 

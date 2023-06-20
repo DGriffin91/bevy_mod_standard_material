@@ -158,8 +158,8 @@ fn pbr_input_new() -> PbrInput {
     return pbr_input;
 }
 
-fn get_f0(reflectance: f32, metallic: f32, metal_color: vec3<f32>) -> vec3<f32> {
-    let F0 = 0.16 * reflectance * reflectance * (1.0 - metallic) + metal_color * metallic;
+fn get_f0(reflectance: f32, metallic: f32, color: vec3<f32>) -> vec3<f32> {
+    let F0 = 0.16 * reflectance * reflectance * (1.0 - metallic) + color * metallic;
     return F0;
 }
 
@@ -241,7 +241,7 @@ fn pbr(
         var shadow: f32 = 1.0;
         if ((in.flags & MESH_FLAGS_SHADOW_RECEIVER_BIT) != 0u
                 && (lights.directional_lights[i].flags & DIRECTIONAL_LIGHT_FLAGS_SHADOWS_ENABLED_BIT) != 0u) {
-            shadow = fetch_directional_shadow(in.frag_coord, i, in.world_position, in.world_normal, view_z, sample_index);
+            shadow = fetch_directional_shadow(in.frag_coord, i, in.world_position, in.world_normal, view_z);
         }
         var light_contrib = directional_light(i, roughness, NdotV, in.N, in.V, R, F0, f_ab, diffuse_color);
 #ifdef DIRECTIONAL_LIGHT_SHADOW_MAP_DEBUG_CASCADES

@@ -68,6 +68,13 @@ var screen_passes_processed: texture_2d_array<f32>;
 @group(0) @binding(22)
 var screen_passes_target: texture_storage_2d_array<rgba16float, write>;
 
+@group(0) @binding(23)
+var voxel_cache: texture_3d<f32>;
+@group(0) @binding(24)
+var voxel_cache_write: texture_storage_3d<rgba32float, write>;
+
+#import "shaders/voxel_cache.wgsl"
+
 
 #import bevy_coordinate_systems::transformations
 #import bevy_pbr::prepass_utils

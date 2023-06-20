@@ -14,7 +14,7 @@ use crate::{
     prepass_downsample::{PrepassDownsampleNode, PrepassDownsampleTexture},
     resource,
     screen_space_passes::ScreenSpacePassesTextures,
-    BlueNoise,
+    BlueNoise, voxel_pass::{VoxelPassTextures, VoxelPassNode},
 };
 use bevy::{
     core_pipeline::{core_3d, prepass::ViewPrepassTextures},
@@ -82,6 +82,7 @@ impl Plugin for PathTracePlugin {
                 core_3d::graph::NAME,
                 &[
                     PrepassDownsampleNode::NAME,
+                    VoxelPassNode::NAME,
                     PathTraceNode::NAME,
                     core_3d::graph::node::START_MAIN_PASS,
                 ],
@@ -107,6 +108,7 @@ pub struct PathTraceNode {
             &'static PrepassDownsampleTexture,
             &'static ScreenSpacePassesTextures,
             &'static PathTraceTextures,
+            &'static VoxelPassTextures,
         ),
         With<ExtractedView>,
     >,
@@ -146,7 +148,8 @@ impl Node for PathTraceNode {
                 prev_frame_tex, 
                 prepass_downsample_texture, 
                 screen_space_passes_textures,
-                path_trace_textures)) = self.query.get_manual(world, view_entity) else {
+                path_trace_textures,
+                voxel_pass_textures)) = self.query.get_manual(world, view_entity) else {
             return Ok(());
         };
 
@@ -201,6 +204,8 @@ impl Node for PathTraceNode {
             tex_view_entry(20, &prepass_downsample_texture.0.default_view),
             tex_view_entry(21, &screen_space_passes_textures.sm_tex_write.default_view),
             tex_view_entry(22, &screen_space_passes_textures.sm_tex_read.default_view),
+            tex_view_entry(23, &voxel_pass_textures.write.default_view),
+            tex_view_entry(24, &voxel_pass_textures.read.default_view),
         ];
 
         entries.extend(gpu_buffer_bind_group_entries);
@@ -301,6 +306,11 @@ impl FromWorld for TracePipeline {
             image_layout_entry(20, TextureViewDimension::D2),
             image_layout_entry(21, TextureViewDimension::D2Array),
             image_layout_entry(22, TextureViewDimension::D2Array),
+            image_layout_entry(23, TextureViewDimension::D3),storage_tex_write_layout_entry(
+                24,
+                TextureFormat::Rgba32Float,
+                TextureViewDimension::D3,
+            ),
         ];
 
         entries.append(&mut GPUBuffers::bind_group_layout_entry([5, 6, 7, 8, 9, 10, 11]).to_vec());

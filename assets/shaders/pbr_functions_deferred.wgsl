@@ -204,7 +204,7 @@ fn pbr(
         var shadow: f32 = 1.0;
         if ((in.flags & MESH_FLAGS_SHADOW_RECEIVER_BIT) != 0u
                 && (lights.directional_lights[i].flags & DIRECTIONAL_LIGHT_FLAGS_SHADOWS_ENABLED_BIT) != 0u) {
-            shadow = fetch_directional_shadow(i, in.world_position, in.world_normal, view_z);
+            shadow = fetch_directional_shadow(in.frag_coord, i, in.world_position, in.world_normal, view_z);
         }
         var light_contrib = directional_light(i, roughness, NdotV, in.N, in.V, R, F0, f_ab, diffuse_color);
 #ifdef DIRECTIONAL_LIGHT_SHADOW_MAP_DEBUG_CASCADES
@@ -224,7 +224,7 @@ fn pbr(
 
     // SSR
     let fullscreen_passes_processed_size = vec2<f32>(textureDimensions(fullscreen_passes_processed).xy);
-    indirect_light += textureLoad(fullscreen_passes_processed, vec2<i32>(screen_uv * fullscreen_passes_processed_size), 5u, 0).xyz;
+    indirect_light += textureLoad(fullscreen_passes_processed, vec2<i32>(screen_uv * fullscreen_passes_processed_size), 6u, 0).xyz;
     // ------------------
     // ------------------
     // ------------------
