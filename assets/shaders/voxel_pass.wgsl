@@ -93,9 +93,9 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     //if true {return;}
 
     // something something cache locality
-    let looking_at = position_view_to_world(vec3(0.0, 0.0, -1.0));
-    let looking_at_dir = normalize(looking_at - view.world_position.xyz);
-    let invocation_id = select(vec3(u32(VOXEL_GRID_SIZE)) - invocation_id, invocation_id, looking_at_dir < 0.0);
+    //let looking_at = position_view_to_world(vec3(0.0, 0.0, -1.0));
+    //let looking_at_dir = normalize(looking_at - view.world_position.xyz);
+    //let invocation_id = select(vec3(u32(VOXEL_GRID_SIZE)) - invocation_id, invocation_id, looking_at_dir < 0.0);
 
     let location = vec3<i32>(i32(invocation_id.x), i32(invocation_id.y), i32(invocation_id.z));
 
@@ -106,13 +106,15 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     //);
 
 
-    let prepass_downsample_dims = vec2<f32>(textureDimensions(prepass_downsample).xy);
 
     let prev_view_world_position = textureLoad(voxel_cache, vec3(0), 0).xyz;
 
     let voxel_delta = vec3<i32>(view.world_position.xyz / VOXEL_SIZE) - vec3<i32>(prev_view_world_position / VOXEL_SIZE);
     let prev_voxel = textureLoad(voxel_cache, location + voxel_delta, 0);
 
+    var updated = true;
+#ifndef PREVIEW_MODE
+    let prepass_downsample_dims = vec2<f32>(textureDimensions(prepass_downsample).xy);
     let vox_ws = position_voxel_to_world(location);
     let vox_ws_center = vox_ws + VOXEL_SIZE * 0.5;
 
@@ -123,9 +125,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let vox_vs_center = position_world_to_view(vox_ws_center);
 
     var voxel_ndc = position_world_to_ndc(vox_ws_center); 
-    var updated = true;
     let n = 2;
-#ifndef PREVIEW_MODE
     if voxel_ndc.z > 0.0 && all(abs(voxel_ndc) <= 1.0) {
         var closest = F32_MAX;
         var closest_nor_depth = vec4(0.0);
@@ -180,6 +180,8 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         textureStore(voxel_cache_write, vec3(location), prev_voxel);
     }
 
-    // TODO, move view.world_position elsewhere
-    textureStore(voxel_cache_write, vec3(0), vec4(view.world_position.xyz, F32_MAX));
+    if all(location == vec3(0)) {
+        // TODO, move view.world_position elsewhere
+        textureStore(voxel_cache_write, vec3(0), vec4(view.world_position.xyz, F32_MAX));
+    }
 }

@@ -30,6 +30,13 @@ fn uniform_sample_disc(urand: vec2<f32>) -> vec3<f32> {
     return vec3(x, y, 0.0);
 }
 
+fn uniform_sample_cone(urand: vec2<f32>, cos_theta_max: f32) -> vec3<f32> {
+    let cos_theta = (1.0 - urand.x) + urand.x * cos_theta_max;
+    let sin_theta = sqrt(saturate(1.0 - cos_theta * cos_theta));
+    let phi = urand.y * TAU;
+    return vec3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+}
+
 fn cosine_sample_hemisphere(urand: vec2<f32>) -> vec3<f32> {
     let r = sqrt(urand.x);
     let theta = urand.y * TAU;
@@ -143,6 +150,18 @@ fn build_orthonormal_basis(n: vec3<f32>) -> mat3x3<f32> {
         b1.y, b2.y, n.y,
         b1.z, b2.z, n.z
     );
+}
+
+// https://github.com/NVIDIAGameWorks/RayTracingDenoiser/blob/3c881ae3075f7ca754e22177877335b82e16da5a/Shaders/Include/Common.hlsli#L124
+fn pixel_radius_to_world(pixel_radius: f32, linear_depth: f32, is_orthographic: bool) -> f32 {
+    // https://github.com/NVIDIAGameWorks/RayTracingDenoiser/blob/3c881ae3075f7ca754e22177877335b82e16da5a/Source/Sigma.cpp#L107
+    let unproject = 1.0 / (0.5 * view.viewport.w * view.projection[1][1]);
+    return pixel_radius * unproject * select(linear_depth, 1.0, is_orthographic);
+}
+
+
+fn projection_is_orthographic() -> bool {
+    return view.projection[3].w == 1.0;
 }
 
 // ------------------------

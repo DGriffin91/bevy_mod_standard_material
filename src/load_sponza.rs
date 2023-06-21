@@ -6,12 +6,15 @@ use crate::{
     path_trace::{PathTrace, TraceSettings},
     prepass_downsample::PrepassDownsample,
     screen_space_passes::ScreenSpacePasses,
+    taa::TemporalAntiAliasBundle,
     voxel_pass::VoxelPass,
 };
 use bevy::{
     core_pipeline::{
-        bloom::BloomSettings, experimental::taa::TemporalAntiAliasBundle, fxaa::Fxaa,
-        prepass::NormalPrepass, tonemapping::Tonemapping,
+        bloom::BloomSettings,
+        fxaa::Fxaa,
+        prepass::{DeferredPrepass, NormalPrepass},
+        tonemapping::Tonemapping,
     },
     pbr::CascadeShadowConfigBuilder,
     prelude::*,
@@ -213,6 +216,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 walk_speed: 1.0,
                 ..default()
             },
+            DeferredPrepass,
             Fxaa::default(),
             CopyFrame,
             PrepassDownsample,

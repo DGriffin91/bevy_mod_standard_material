@@ -104,7 +104,7 @@ fn distance_fn(_this_: DepthRaymarchDistanceFn, ray_point_cs: vec3<f32>, candida
 
     if _this_.use_bilinear {
         //let linear_depth = 1.0 / bilinear_depth(interp_uv, _this_.depth_tex_size, _this_.sample_index);
-        
+        // TODO should this use near for linear depth?
         let linear_depth = 1.0 / textureSampleLevel(prepass_downsample, linear_sampler, interp_uv, f32(MIP)).w;
 
         max_depth = max(linear_depth, unfiltered_depth);
