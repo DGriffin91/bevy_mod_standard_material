@@ -53,12 +53,10 @@ fn load_probe(coord: vec2<i32>) -> Probe {
     let ray_hit_offset_xy = unpack2x16float(data0.z);
     let ray_hit_offset_z_m = unpack2x16float(data0.w);
     p.M = u32(ray_hit_offset_z_m.y); // current max 2048 TODO use u16: //(data0_w >> 16u) & 0xFFFFu;
-    p.ray_hit_pos = vec3(ray_hit_offset_xy, ray_hit_offset_z_m.x) + p.pos;
     p.pos = data1.xyz;
+    p.ray_hit_pos = vec3(ray_hit_offset_xy, ray_hit_offset_z_m.x) + p.pos;
     p.reproject_fail = bool(u32(data1.w));
 
-
-    return p;
 
 // old format:
 //    let weight_data = textureLoad(fullscreen_passes_read, coord, 1u, 0).xyz;
@@ -69,6 +67,13 @@ fn load_probe(coord: vec2<i32>) -> Probe {
 //    p.ray_hit_pos = textureLoad(fullscreen_passes_read, coord, 0u, 0).xyz;
 //    p.color = textureLoad(fullscreen_passes_read, coord, 3u, 0).xyz;
 //    p.reproject_fail = true;
+
+    return p;
+}
+
+// pos, reprojection fail
+fn load_probe_pos(coord: vec2<i32>) -> vec4<f32> {
+    return textureLoad(fullscreen_passes_read, coord, 1u, 0);
 }
 
 fn store_probe(p: Probe, coord: vec2<i32>) {

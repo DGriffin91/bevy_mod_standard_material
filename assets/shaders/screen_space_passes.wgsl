@@ -298,7 +298,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
                     if any(coord < vec2(0)) || any(coord >= itex_dims) {
                         continue;
                     }
-                    let test_probe_pos = textureLoad(fullscreen_passes_read, coord, 2u, 0).xyz;
+                    let test_probe_pos = load_probe_pos(coord).xyz;
                     let dist = distance(test_probe_pos, world_position_offs);
                     if dist < closest {
                         selected_offset = offset;
@@ -753,8 +753,8 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
     
 
-    textureStore(fullscreen_passes_write, location, 2u, textureLoad(fullscreen_passes_read, location, 2u, 0));
-    textureStore(fullscreen_passes_write, location, 3u, textureLoad(fullscreen_passes_read, location, 3u, 0));
+    //textureStore(fullscreen_passes_write, location, 2u, textureLoad(fullscreen_passes_read, location, 2u, 0));
+    //textureStore(fullscreen_passes_write, location, 3u, textureLoad(fullscreen_passes_read, location, 3u, 0));
 
     textureStore(fullscreen_passes_write, location, 5u, textureLoad(fullscreen_passes_read, location, 5u, 0));
     textureStore(fullscreen_passes_write, location, 6u, textureLoad(fullscreen_passes_read, location, 6u, 0));
