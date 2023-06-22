@@ -164,6 +164,14 @@ fn projection_is_orthographic() -> bool {
     return view.projection[3].w == 1.0;
 }
 
+fn coplanar(pos1: vec3<f32>, normal1: vec3<f32>, pos2: vec3<f32>, normal2: vec3<f32>, nor_epsilon: f32, ws_epsilon: f32) -> bool {
+    if (dot(normal1, normal2) < clamp(nor_epsilon - 1.0, -1.0, 1.0)) {
+        return false;
+    }
+    let D1 = -dot(normal1, pos1);
+    return abs(dot(normal1, pos2) + D1) < ws_epsilon;
+}
+
 // ------------------------
 // BRDF stuff from kajiya
 // ------------------------

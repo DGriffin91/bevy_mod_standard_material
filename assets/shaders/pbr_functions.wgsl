@@ -257,7 +257,7 @@ fn pbr(
     //var ssgi = bad_ssgi(vec2<i32>(in.frag_coord.xy), normalize(in.N), in.world_position.xyz, 1u).rgb;
     //indirect_light += ssgi * diffuse_color;
 
-    indirect_light += sample_restir_gi(diffuse_color, screen_uv, in.N, in.world_position.xyz);
+    //indirect_light += sample_restir_gi(diffuse_color, screen_uv, in.N, in.world_position.xyz);
 
 //    let ssgi = textureSampleLevel(screen_passes_processed, linear_sampler, screen_uv + best_lod_offset, 3u, 0.0).rgb;
 //    indirect_light += ssgi * diffuse_color;

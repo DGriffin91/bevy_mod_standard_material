@@ -219,12 +219,13 @@ fn pbr(
     // ------------------
     // ------------------
     // ------------------
-    // GI (SSGI + PT)
-    indirect_light += sample_restir_gi(diffuse_color, screen_uv, in.N, in.world_position.xyz);
+    // GI (SSGI + PT)    
+    let fullscreen_passes_processed_size = vec2<f32>(textureDimensions(fullscreen_passes_processed).xy);
+    var proposed_col = textureLoad(fullscreen_passes_processed, vec2<i32>(screen_uv * fullscreen_passes_processed_size), 2u, 0).xyz;
+    indirect_light += max(proposed_col, vec3(0.0)) * diffuse_color;
 
     // SSR
-    let fullscreen_passes_processed_size = vec2<f32>(textureDimensions(fullscreen_passes_processed).xy);
-    indirect_light += textureLoad(fullscreen_passes_processed, vec2<i32>(screen_uv * fullscreen_passes_processed_size), 6u, 0).xyz;
+    indirect_light += textureLoad(fullscreen_passes_processed, vec2<i32>(screen_uv * fullscreen_passes_processed_size), 3u, 0).xyz;
     // ------------------
     // ------------------
     // ------------------

@@ -536,13 +536,13 @@ pub fn queue_deferred_lighting_bind_groups(
             entries.push(BindGroupEntry {
                 binding: 20,
                 resource: BindingResource::TextureView(
-                    &screen_space_passes_textures.sm_tex_read.default_view,
+                    &screen_space_passes_textures.sm_tex_b.default_view,
                 ),
             });
             entries.push(BindGroupEntry {
                 binding: 21,
                 resource: BindingResource::TextureView(
-                    &screen_space_passes_textures.full_tex_read.default_view,
+                    &screen_space_passes_textures.full_tex_b.default_view,
                 ),
             });
             let blue_noise = images.get(&blue_noise.0).unwrap();

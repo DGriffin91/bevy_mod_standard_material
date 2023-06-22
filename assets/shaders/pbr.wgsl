@@ -46,7 +46,6 @@ var voxel_cache: texture_3d<f32>;
 #import "shaders/bad_ssr_use_voxels.wgsl"
 #import "shaders/bad_gtao.wgsl"
 #import "shaders/shadows.wgsl"
-#import "shaders/sample_restir_gi.wgsl"
 #import bevy_pbr::fog
 //#import bevy_pbr::pbr_functions
 #import "shaders/pbr_functions.wgsl"

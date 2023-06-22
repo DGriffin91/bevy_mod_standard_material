@@ -43,8 +43,8 @@ fn load_probe_with_pos(coord: vec2<i32>, pos: vec3<f32>) -> Probe {
 fn load_probe(coord: vec2<i32>) -> Probe {
     var p: Probe;
     
-    let data0 = bitcast<vec4<u32>>(textureLoad(fullscreen_passes_read, coord, 0u, 0));
-    let data1 = textureLoad(fullscreen_passes_read, coord, 1u, 0);
+    let data0 = bitcast<vec4<u32>>(textureLoad(fullscreen_passes_read, coord, RESERVIOR_LAYER0, 0));
+    let data1 = textureLoad(fullscreen_passes_read, coord, RESERVIOR_LAYER1, 0);
 
     p.color = rgb9e5_to_float3(data0.x);
     let sum_weight = unpack2x16float(data0.y);
@@ -73,7 +73,7 @@ fn load_probe(coord: vec2<i32>) -> Probe {
 
 // pos, reprojection fail
 fn load_probe_pos(coord: vec2<i32>) -> vec4<f32> {
-    return textureLoad(fullscreen_passes_read, coord, 1u, 0);
+    return textureLoad(fullscreen_passes_read, coord, RESERVIOR_LAYER1, 0);
 }
 
 fn store_probe(p: Probe, coord: vec2<i32>) {
@@ -95,8 +95,8 @@ fn store_probe(p: Probe, coord: vec2<i32>) {
         f32(p.reproject_fail), // <- spare bits here
     );
     
-    textureStore(fullscreen_passes_write, coord, 0u, data0);
-    textureStore(fullscreen_passes_write, coord, 1u, data1);
+    textureStore(fullscreen_passes_write, coord, RESERVIOR_LAYER0, data0);
+    textureStore(fullscreen_passes_write, coord, RESERVIOR_LAYER1, data1);
     
 // old format:
 //    textureStore(fullscreen_passes_write, coord, 0u, vec4(p.ray_hit_pos, f32(p.reproject_fail)));

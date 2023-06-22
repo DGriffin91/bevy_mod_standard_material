@@ -145,6 +145,12 @@ impl Node for ScreenSpacePassesNode {
         let Some(restir_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.restir_pipeline_id) else {
             return Ok(());
         };
+        let Some(spatial_reuse_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.spatial_reuse_id) else {
+            return Ok(());
+        };
+        let Some(pre_blur_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.pre_blur_pipeline_id) else {
+            return Ok(());
+        };
         let Some(blur_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.blur_pipeline_id) else {
             return Ok(());
         };
@@ -167,10 +173,10 @@ impl Node for ScreenSpacePassesNode {
 
         let mut entries = vec![
             // at the start so they are easy to swap for the blur
-            tex_view_entry(8, &screen_space_passes_textures.sm_tex_read.default_view),
-            tex_view_entry(9, &screen_space_passes_textures.sm_tex_write.default_view),
-            tex_view_entry(10, &screen_space_passes_textures.full_tex_read.default_view),
-            tex_view_entry(11, &screen_space_passes_textures.full_tex_write.default_view),
+            tex_view_entry(8, &screen_space_passes_textures.sm_tex_b.default_view),
+            tex_view_entry(9, &screen_space_passes_textures.sm_tex_a.default_view),
+            tex_view_entry(10, &screen_space_passes_textures.full_tex_b.default_view),
+            tex_view_entry(11, &screen_space_passes_textures.full_tex_a.default_view),
             view_binding_entry(0, world),
             globals_binding_entry(1, world),
             tex_view_entry(2, &prev_frame_tex.0.default_view),
@@ -206,8 +212,8 @@ impl Node for ScreenSpacePassesNode {
 
             pass.set_pipeline(candidates_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
-            let w = screen_space_passes_textures.sm_tex_read.texture.width();
-            let h = screen_space_passes_textures.sm_tex_read.texture.height();
+            let w = screen_space_passes_textures.sm_tex_b.texture.width();
+            let h = screen_space_passes_textures.sm_tex_b.texture.height();
             pass.dispatch_workgroups(w / WORKGROUP_SIZE, h / WORKGROUP_SIZE, 1);
         }
 
@@ -233,8 +239,8 @@ impl Node for ScreenSpacePassesNode {
 
             pass.set_pipeline(restir_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
-            let w = screen_space_passes_textures.full_tex_read.texture.width();
-            let h = screen_space_passes_textures.full_tex_read.texture.height();
+            let w = screen_space_passes_textures.full_tex_b.texture.width();
+            let h = screen_space_passes_textures.full_tex_b.texture.height();
             pass.dispatch_workgroups(
                 // make sure we are >= target_image.size
                 (w as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
@@ -257,6 +263,76 @@ impl Node for ScreenSpacePassesNode {
                 render_context
                     .render_device()
                     .create_bind_group(&BindGroupDescriptor {
+                        label: Some("ScreenSpacePassesNode_bind_group_spatial_reuse"),
+                        layout: &pipeline.layout,
+                        entries: &entries,
+                    });
+
+            let mut pass = render_context
+                .command_encoder()
+                .begin_compute_pass(&ComputePassDescriptor::default());
+
+            pass.set_pipeline(&spatial_reuse_pipeline);
+            pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
+            let w = screen_space_passes_textures.full_tex_b.texture.width();
+            let h = screen_space_passes_textures.full_tex_b.texture.height();
+            pass.dispatch_workgroups(
+                // make sure we are >= target_image.size
+                (w as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+                (h as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1);
+        }
+
+        {
+            // swap prev and next target
+            // let a = entries[0].binding;
+            // let b = entries[1].binding;
+            // entries[0].binding = b;
+            // entries[1].binding = a;
+
+            let a = entries[2].binding;
+            let b = entries[3].binding;
+            entries[2].binding = b;
+            entries[3].binding = a;
+
+            let bind_group =
+                render_context
+                    .render_device()
+                    .create_bind_group(&BindGroupDescriptor {
+                        label: Some("ScreenSpacePassesNode_bind_group_pre_blur"),
+                        layout: &pipeline.layout,
+                        entries: &entries,
+                    });
+
+            let mut pass = render_context
+                .command_encoder()
+                .begin_compute_pass(&ComputePassDescriptor::default());
+
+            pass.set_pipeline(pre_blur_pipeline);
+            pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
+            let w = screen_space_passes_textures.full_tex_b.texture.width();
+            let h = screen_space_passes_textures.full_tex_b.texture.height();
+            pass.dispatch_workgroups(
+                // make sure we are >= target_image.size
+                (w as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
+                (h as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1);
+        }
+
+        {
+            // swap prev and next target
+            // let a = entries[0].binding;
+            // let b = entries[1].binding;
+            // entries[0].binding = b;
+            // entries[1].binding = a;
+
+            let a = entries[2].binding;
+            let b = entries[3].binding;
+            entries[2].binding = b;
+            entries[3].binding = a;
+
+            let bind_group =
+                render_context
+                    .render_device()
+                    .create_bind_group(&BindGroupDescriptor {
                         label: Some("ScreenSpacePassesNode_bind_group_blur"),
                         layout: &pipeline.layout,
                         entries: &entries,
@@ -268,8 +344,8 @@ impl Node for ScreenSpacePassesNode {
 
             pass.set_pipeline(blur_pipeline);
             pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
-            let w = screen_space_passes_textures.full_tex_read.texture.width();
-            let h = screen_space_passes_textures.full_tex_read.texture.height();
+            let w = screen_space_passes_textures.full_tex_b.texture.width();
+            let h = screen_space_passes_textures.full_tex_b.texture.height();
             pass.dispatch_workgroups(
                 // make sure we are >= target_image.size
                 (w as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE,
@@ -287,13 +363,27 @@ struct TracePipeline {
     restir_pipeline_id: CachedComputePipelineId,
     blur_pipeline_id: CachedComputePipelineId,
     candidates_pipeline_id: CachedComputePipelineId,
+    spatial_reuse_id: CachedComputePipelineId,
+    pre_blur_pipeline_id: CachedComputePipelineId,
 }
 
 impl FromWorld for TracePipeline {
     fn from_world(world: &mut World) -> Self {
         let shader = world
             .resource::<AssetServer>()
-            .load("shaders/screen_space_passes.wgsl");
+            .load("shaders/screen_space_passes/screen_space_passes.wgsl");
+        let blur_shader = world
+            .resource::<AssetServer>()
+            .load("shaders/screen_space_passes/blur.wgsl");
+        let screen_trace_shader = world
+            .resource::<AssetServer>()
+            .load("shaders/screen_space_passes/screen_trace.wgsl");
+        let spatial_reuse_shader = world
+            .resource::<AssetServer>()
+            .load("shaders/screen_space_passes/spatial_reuse.wgsl");
+        let pre_blur_shader = world
+            .resource::<AssetServer>()
+            .load("shaders/screen_space_passes/pre_blur.wgsl");
 
         let render_device = world.resource::<RenderDevice>();
 
@@ -353,9 +443,9 @@ impl FromWorld for TracePipeline {
             label: None,
             layout: vec![layout.clone()],
             push_constant_ranges: Vec::new(),
-            shader: shader.clone(),
+            shader: screen_trace_shader.clone(),
             shader_defs: shader_defs.clone(),
-            entry_point: Cow::from("candidates"),
+            entry_point: Cow::from("update"),
         });
 
         let pipeline_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -367,20 +457,42 @@ impl FromWorld for TracePipeline {
             entry_point: Cow::from("update"),
         });
 
+        let spatial_reuse_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+            label: None,
+            layout: vec![layout.clone()],
+            push_constant_ranges: Vec::new(),
+            shader: spatial_reuse_shader,
+            shader_defs: shader_defs.clone(),
+            entry_point: Cow::from("update"),
+        });
+
         let blur_pipeline_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
             label: None,
             layout: vec![layout.clone()],
             push_constant_ranges: Vec::new(),
-            shader,
-            shader_defs,
-            entry_point: Cow::from("blur"),
+            shader: blur_shader,
+            shader_defs: shader_defs.clone(),
+            entry_point: Cow::from("update"),
         });
+
+        let pre_blur_pipeline_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+            label: None,
+            layout: vec![layout.clone()],
+            push_constant_ranges: Vec::new(),
+            shader: pre_blur_shader,
+            shader_defs,
+            entry_point: Cow::from("update"),
+        });
+
+        
 
         Self {
             layout,
             sampler,
             candidates_pipeline_id,
             restir_pipeline_id: pipeline_id,
+            spatial_reuse_id,
+            pre_blur_pipeline_id,
             blur_pipeline_id,
         }
     }
@@ -388,10 +500,10 @@ impl FromWorld for TracePipeline {
 
 #[derive(Component)]
 pub struct ScreenSpacePassesTextures {
-    pub sm_tex_write: CachedTexture,
-    pub sm_tex_read: CachedTexture,
-    pub full_tex_write: CachedTexture,
-    pub full_tex_read: CachedTexture,
+    pub sm_tex_a: CachedTexture,
+    pub sm_tex_b: CachedTexture,
+    pub full_tex_a: CachedTexture,
+    pub full_tex_b: CachedTexture,
 }
 
 fn prepare_textures(
@@ -448,10 +560,10 @@ fn prepare_textures(
             let full_tex_read = texture_cache.get(&render_device, texture_descriptor.clone());
 
             commands.entity(entity).insert(ScreenSpacePassesTextures {
-                sm_tex_write,
-                sm_tex_read,
-                full_tex_write,
-                full_tex_read,
+                sm_tex_a: sm_tex_write,
+                sm_tex_b: sm_tex_read,
+                full_tex_a: full_tex_write,
+                full_tex_b: full_tex_read,
             });
         }
     }

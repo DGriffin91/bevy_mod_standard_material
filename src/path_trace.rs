@@ -202,8 +202,8 @@ impl Node for PathTraceNode {
             tex_view_entry(16, &normal_binding.default_view),
             tex_view_entry(17, &motion_vectors_binding.default_view),
             tex_view_entry(20, &prepass_downsample_texture.0.default_view),
-            tex_view_entry(21, &screen_space_passes_textures.sm_tex_write.default_view),
-            tex_view_entry(22, &screen_space_passes_textures.sm_tex_read.default_view),
+            tex_view_entry(21, &screen_space_passes_textures.sm_tex_a.default_view),
+            tex_view_entry(22, &screen_space_passes_textures.sm_tex_b.default_view),
             tex_view_entry(23, &voxel_pass_textures.write.default_view),
             tex_view_entry(24, &voxel_pass_textures.read.default_view),
         ];

@@ -34,7 +34,6 @@ var prepass_downsample: texture_2d<f32>;
 @group(0) @binding(24)
 var linear_sampler: sampler;
 
-#import "shaders/sample_restir_gi.wgsl"
 
 
 @fragment
