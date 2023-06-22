@@ -315,7 +315,7 @@ impl FromWorld for TracePipeline {
             image_layout_entry(10, TextureViewDimension::D2Array),
             storage_tex_write_layout_entry(
                 11,
-                TextureFormat::Rgba16Float,
+                TextureFormat::Rgba32Float,
                 TextureViewDimension::D2Array,
             ),
         ];
@@ -427,11 +427,11 @@ fn prepare_textures(
             
             let mut texture_descriptor = TextureDescriptor {
                 dimension: TextureDimension::D2,
-                format: TextureFormat::Rgba16Float,
+                format: TextureFormat::Rgba32Float,
                 usage: TextureUsages::STORAGE_BINDING
                     | TextureUsages::TEXTURE_BINDING
                     | TextureUsages::COPY_SRC,
-                view_formats: &[TextureFormat::Rgba16Float],
+                view_formats: &[],
                 label: None,
                 size: Extent3d {
                     width: physical_viewport_size.x,

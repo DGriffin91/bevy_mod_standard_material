@@ -16,8 +16,8 @@ Optimize voxel traversal, we understep currently so we naively hit every voxel
 #define RESTIR_ANTI_CLUMPING
 #define SSR
 const SSR_SAMPLES = 0u;
-const FULL_SSR_SAMPLES = 12u;
-const MAX_M = 1024u;
+const FULL_SSR_SAMPLES = 0u;
+const MAX_M = 1024u; //current max 2048
 const GI_HYSTERISIS = 0.2;//0.08; //0.2
 const SSGI_PIX_RADIUS_DIST = 100.0;
 
@@ -58,7 +58,7 @@ var screen_passes_write: texture_storage_2d_array<rgba16float, write>;
 @group(0) @binding(10)
 var fullscreen_passes_read: texture_2d_array<f32>;
 @group(0) @binding(11)
-var fullscreen_passes_write: texture_storage_2d_array<rgba16float, write>;
+var fullscreen_passes_write: texture_storage_2d_array<rgba32float, write>;
 
 @group(0) @binding(12)
 var depth_prepass_texture: texture_depth_2d;
@@ -95,6 +95,7 @@ fn calculate_view(world_position: vec4<f32>, is_orthographic: bool) -> vec3<f32>
 #import "shaders/bad_ssgi.wgsl"
 #import "shaders/bad_gtao.wgsl"
 #import "shaders/voxel_cache.wgsl"
+#import "shaders/probe.wgsl"
 
 
 
@@ -242,6 +243,8 @@ fn screentrace(linear_depth: f32, ufrag_coord: vec2<u32>, probe_pos: vec3<f32>, 
     return res;
 }
 
+
+
 fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, samples: u32) {
     
     let ufrag_coord = vec2<u32>(ifrag_coord.xy);
@@ -270,15 +273,9 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
     var pt_col_accum = vec3(0.0);
     var pt_accum_tot_w = 0.0;
 
-    var probe_pos = world_position_offs;
-    var ray_hit_pos = vec3(F32_MAX);
-    var weight_data = vec4(0.0);
-    var M = 0u;
-    var w_sum = 0.0;
-    var weight = 0.0;
-    var probe_latest_color = vec3(0.0);
-    var probe_color = vec3(0.0);
-    var probe_surface_normal = pbr.N;
+    var probe = new_probe();
+    probe.pos = world_position_offs;
+    var probe_proc_color = vec3(0.0);
     
     let closest_motion_vector = prepass_motion_vector(vec4<f32>(screen_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
     let screen_history_uv = screen_uv - closest_motion_vector;
@@ -287,18 +284,18 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
     var sample_coord = screen_space_passes_coord;
     var sample_uv = screen_uv;
 
-    let first_probe_pos = textureLoad(fullscreen_passes_read, sample_coord, 2u, 0).xyz;
+    let first_probe_pos = load_probe(sample_coord).pos;
     // locate closest probe
     if history_hit_screen {
         var selected_offset = vec2(0, 0);
         var closest = distance(first_probe_pos, world_position_offs);
-        probe_pos = first_probe_pos;
+        probe.pos = first_probe_pos;
         if closest > pixel_radius * 1.5 {
             for (var x = -1; x <= 1; x += 1) {
                 for (var y = -1; y <= 1; y += 1) {
                     let offset = vec2(x, y);
                     let coord = screen_space_passes_coord + offset;
-                    if coord.x < 0 || coord.y < 0 || coord.x >= itex_dims.x || coord.y >= itex_dims.y {
+                    if any(coord < vec2(0)) || any(coord >= itex_dims) {
                         continue;
                     }
                     let test_probe_pos = textureLoad(fullscreen_passes_read, coord, 2u, 0).xyz;
@@ -306,7 +303,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
                     if dist < closest {
                         selected_offset = offset;
                         closest = dist;
-                        probe_pos = test_probe_pos;
+                        probe.pos = test_probe_pos;
                     }
                 }
             }
@@ -314,56 +311,36 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
 
         sample_coord = screen_space_passes_coord + selected_offset;
         sample_uv = (vec2<f32>(sample_coord) + 0.5) / vec2<f32>(tex_dims);
-        ray_hit_pos = textureLoad(fullscreen_passes_read, sample_coord, 0u, 0).xyz;
-        weight_data = textureLoad(fullscreen_passes_read, sample_coord, 1u, 0);
-        probe_latest_color = textureLoad(fullscreen_passes_read, sample_coord, 3u, 0).xyz;
-        probe_color = textureLoad(fullscreen_passes_read, sample_coord, 4u, 0).xyz;
-
-        M = u32(weight_data.x);
-        w_sum = weight_data.y;
-        weight = weight_data.z;
+        
+        probe_proc_color = textureLoad(fullscreen_passes_read, sample_coord, 4u, 0).xyz;
+        probe = load_probe_with_pos(sample_coord, probe.pos);
     }
 
     
 
     var max_radius_dist = pixel_radius * 3.0;
 
-    //probe_surface_normal is basically ignored here
-    if coplanar(probe_pos, probe_surface_normal, world_position_offs, pbr.N, 0.1, pixel_radius) {
+    //normal is basically ignored here
+    if coplanar(probe.pos, pbr.N, world_position_offs, pbr.N, 0.1, pixel_radius) {
         max_radius_dist *= 8.0;
     }
 
-    let reproject_fail = distance(probe_pos, world_position_offs) > max_radius_dist || !history_hit_screen;
+    probe.reproject_fail = distance(probe.pos, world_position_offs) > max_radius_dist || !history_hit_screen;
 
 
     // if closest probe is too far, reset reservoir
-    if reproject_fail {
-        ray_hit_pos = vec3(F32_MAX);
-        M = 0u;
-        w_sum = 0.0;
-        weight = 0.0;
-        probe_pos = world_position_offs;
-    }
-
-    if M == 0u {
-        ray_hit_pos = vec3(F32_MAX);
-        probe_pos = world_position_offs;
+    if probe.reproject_fail || probe.M == 0u {
+        probe = new_probe();
+        probe.pos = world_position_offs;
     }
 
     // randomly reset position
-    let reset = hash_noise(ifrag_coord, globals.frame_count);
-    if reset > 0.9 {
-        probe_pos = world_position_offs;
+    if hash_noise(ifrag_coord, globals.frame_count) > 0.9 {
+        probe.pos = world_position_offs;
     }
 
-    // Works better than resetting TODO still probably not what restir does
-    if M > MAX_M {
-        let ratio = f32(MAX_M) / f32(M);
-        M = MAX_M;
-        w_sum = w_sum * ratio;
-    }
+    probe_scale(&probe, MAX_M);
 
-    let m_progress = saturate(f32(M) / f32(MAX_M));
     
     let white_frame_noise = white_frame_noise(3812u);
     let seed = samples + globals.frame_count * samples;
@@ -398,7 +375,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
         }
 
         let st_ray_start = textureLoad(screen_passes_read, coord, 0u, 0).xyz;
-        let probe_to_cand_distance = distance(st_ray_start, probe_pos);
+        let probe_to_cand_distance = distance(st_ray_start, probe.pos);
 
         if probe_to_cand_distance > max_dist {
             // Sample is too far away
@@ -434,19 +411,15 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
             var new_weight = gr * dist_falloff * brdf * f32(!st.backface) * f32(st.hit) * st.derate;
             new_weight = max(new_weight, 0.0);
 
-            w_sum += new_weight;
+            probe.w_sum += new_weight;
 
             var threshold = new_weight / w_sum;
 
-            if i == 0u && (M == 0u || ray_hit_pos.x == F32_MAX) {
+            if i == 0u && (probe.M == 0u || ray_hit_pos.x == F32_MAX) {
                 threshold = 1.0;
             }
 
-            if threshold > urand.z {
-                ray_hit_pos = st.pos;
-                weight = new_weight;
-                probe_latest_color = st.color;
-            }
+            probe_update(&probe, urand.z, new_weight, st.pos, st.color)
 
             {
                 let probe_dist_falloff = saturate(max_dist - probe_to_cand_distance) + 1.0;
@@ -474,7 +447,6 @@ var sM = 0u;
         let pt_samples = 7u;
         let retry_coord_samples = 3u;
         var candidates_radius = 7.0 * max(ssao_focus, 0.1);
-        //candidates_radius = mix(candidates_radius * 1.5, candidates_radius, m_progress);
         let path_trace_image_dims = vec2<f32>(textureDimensions(path_trace_image).xy);
         let pt_max_dist = 200.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
         for (var i = 0u; i < pt_samples; i+=1u) {
@@ -488,8 +460,7 @@ var sM = 0u;
 
             for (var j = 0u; j < retry_coord_samples; j+=1u) {
                 let seed = (i + 1u) * (j + 1u) * pt_samples + globals.frame_count * pt_samples;
-                let white_frame_noise = white_frame_noise(seed + 1821u);
-                let urand = fract_blue_noise_for_pixel(ufrag_coord, i + globals.frame_count, white_frame_noise);  
+                let urand = fract_blue_noise_for_pixel(ufrag_coord, seed + globals.frame_count, white_frame_noise);  
                 offset = (urand.wz * 2.0 - 1.0);
                 offset_uv = (offset / path_trace_image_dims) * candidates_radius;
                 coord = vec2<i32>((screen_uv + offset_uv) * path_trace_image_dims);
@@ -510,22 +481,18 @@ var sM = 0u;
             
             // TODO select mip based on path_trace_image_dims relative to tex_dims
             let nor_depth = textureLoad(prepass_downsample, vec2<i32>(tex_dims * (screen_uv + offset_uv)) / 2, 1);
-            let offset_nor_diff = max(dot(nor_depth.xyz, pbr.N) - 0.01, 0.0);
 
+            let probe_to_cand_distance = distance(probe.pos, pt_world_position);
 
-            
-            let probe_to_cand_distance = distance(probe_pos, pt_world_position);
-
-            if coplanar(probe_pos, nor_depth.xyz, world_position_offs, pbr.N, 0.1, pixel_radius * 2.0) {
+            if coplanar(probe.pos, nor_depth.xyz, world_position_offs, pbr.N, 0.1, pixel_radius * 2.0) {
                 max_dist *= 3.0;
             }
 
-    
             if probe_to_cand_distance > max_dist {
-                // Sample is too far away
-                // Doesn't increase M
-                continue;
+                continue; // Sample is too far away. Doesn't increase M
             }
+
+            let offset_nor_diff = max(dot(nor_depth.xyz, pbr.N) - 0.01, 0.0);
 
             var gr = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
             let brdf = max(dot(pbr.N, direction), 0.0);
@@ -534,65 +501,39 @@ var sM = 0u;
                 dist_falloff = 1.0;
             }
 
-
             let probe_dist_falloff = saturate(max_dist - probe_to_cand_distance);
             
             var new_weight = gr * brdf * dist_falloff * probe_dist_falloff * offset_nor_diff;
             new_weight = max(new_weight, 0.0);
-
-            w_sum += new_weight;
-
-            var threshold = new_weight / w_sum;
-
-
-            if threshold > urand.w {
-                ray_hit_pos = new_ray_hit_pos;
-                weight = new_weight;
-                probe_latest_color = color;
-            }
-
-            {
-                let offset_w = saturate(1.0 / (length(offset) * candidates_radius)) + 1.0;
-                let w = max(brdf * dist_falloff * offset_w * probe_dist_falloff, 0.0);
-                pt_col_accum += color * w * brdf;
-                pt_accum_tot_w += w;
-            }
             
-            M += 1u;
+            probe_update(&probe, urand.z, new_weight, new_ray_hit_pos, color);
+            
         }
     }
 #endif //USE_PATH_TRACED
 
 
 
-    let hysterisis = select(GI_HYSTERISIS, 1.0, reproject_fail);
-
-    let w = w_sum / max(0.00001, f32(M) * weight);
-    let resolve_col = min(probe_latest_color, probe_latest_color * w);
-
-
+    let hysterisis = select(GI_HYSTERISIS, 1.0, probe.reproject_fail);
 
     //let ssgi = max(col_accum / accum_tot_w, vec3(0.0));
     //let ptgi = max((pt_col_accum / pt_accum_tot_w), vec3(0.0));
     //var gi = (ssgi + ptgi + resolve_col) / 3.0;
 
-    var gi = resolve_col;
+    var gi = probe_resolve(&probe);
 
 #ifdef SSAO
     // GI is too broad for fine corner detail
     gi *= ssao;
 #endif
 
-    //probe_color = mix(probe_color, mix(gi, ssgi, saturate(ssgi_conf - 0.1)), hysterisis);
-    probe_color = mix(probe_color, gi, hysterisis);
+    //probe_proc_color = mix(probe_proc_color, mix(gi, ssgi, saturate(ssgi_conf - 0.1)), hysterisis);
+    probe_proc_color = mix(probe_proc_color, gi, hysterisis);
 
     
 
-    textureStore(fullscreen_passes_write, ifrag_coord, 0u, vec4(ray_hit_pos, f32(reproject_fail)));
-    textureStore(fullscreen_passes_write, ifrag_coord, 1u, vec4(f32(M), w_sum, weight, weight_data.w));
-    textureStore(fullscreen_passes_write, ifrag_coord, 2u, vec4(probe_pos, 0.0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 3u, vec4(probe_latest_color, 0.0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 4u, vec4(probe_color, ssao_focus));
+    store_probe(probe, ifrag_coord);
+    textureStore(fullscreen_passes_write, ifrag_coord, 4u, vec4(probe_proc_color, ssao_focus));
     
 
 
@@ -607,7 +548,7 @@ var sM = 0u;
     //let half_ssr = textureLoad(screen_passes_read, vec2<i32>(screen_uv * screen_passes_dims), 4u, 0).rgb;
     //ssr = mix(half_ssr, ssr, 0.5);
 
-    if !reproject_fail {
+    if !probe.reproject_fail {
         let prev_ssr = textureLoad(fullscreen_passes_read, sample_coord, 6u, 0).rgb;
         ssr = mix(prev_ssr, ssr, ssr_hysterisis);
     }
@@ -744,11 +685,9 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     var color_distance = 0.0;
 
     
-    let weight_data = textureLoad(fullscreen_passes_read, location, 1u, 0);
-    var M = u32(weight_data.x);
-    var w_sum = weight_data.y;
-    var weight = weight_data.z;
-    let m_progress = saturate(f32(M) / f32(MAX_M));
+
+
+    var probe = load_probe(location);
 
 #ifdef FILTER_SSGI
     let nor_depth = textureSampleLevel(prepass_downsample, linear_sampler, screen_uv, 0.0);
@@ -767,7 +706,6 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     var tot_w = 0.0;
     let samples = 6u;
     var range = mix(9.0, 14.0, urand.z) * ssao_focus;
-    //range = mix(range * 3.0, range * 1.0, pow(m_progress, 0.5));
     let center_weight = 0.1;
     tot += center_color * center_weight;
     tot_w += center_weight;
@@ -814,7 +752,6 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     textureStore(screen_passes_write, location, 4u, textureLoad(screen_passes_read, location, 4u, 0));
 
     
-    textureStore(fullscreen_passes_write, location, 0u, textureLoad(fullscreen_passes_read, location, 0u, 0));
 
     textureStore(fullscreen_passes_write, location, 2u, textureLoad(fullscreen_passes_read, location, 2u, 0));
     textureStore(fullscreen_passes_write, location, 3u, textureLoad(fullscreen_passes_read, location, 3u, 0));
@@ -823,14 +760,9 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     textureStore(fullscreen_passes_write, location, 6u, textureLoad(fullscreen_passes_read, location, 6u, 0));
 
     
-    // used to find out if adjacent reservoirs are duplicates
-    let res_hash = hash_noise(location, globals.frame_count + 8275u);
 
 
 #ifdef RESTIR_ANTI_CLUMPING
-    let ray_hit_pos = textureLoad(fullscreen_passes_read, location, 0u, 0).xyz;
-
-
     var same_pos = 0u;
     var same_wdata = 0u;
 
@@ -840,12 +772,11 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
             if all(offset == vec2(0, 0)) {
                 continue;
             }
-            let s_ray_hit_pos = textureLoad(fullscreen_passes_read, location + offset, 0u, 0).xyz;
-            let s_weight_data = textureLoad(fullscreen_passes_read, location + offset, 1u, 0);
-            if all(s_ray_hit_pos == ray_hit_pos) {
+            let s_probe = load_probe(location + offset);
+            if all(probe.ray_hit_pos == s_probe.ray_hit_pos) {
                 same_pos += 1u;
             }
-            if all(weight_data == s_weight_data)  {
+            if probe.weight == s_probe.weight && probe.w_sum == s_probe.w_sum  {
                 same_wdata += 1u;
             }
         }
@@ -856,16 +787,8 @@ fn blur(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     if same_pos > 0u || color_distance > 1.0 {
         let derate = mix(f32(same_wdata + same_pos), color_distance, 0.85);
         let reset_max = u32(f32(MAX_M) * mix(0.3, 0.6, noise / derate));
-        if M > reset_max {
-            let ratio = f32(reset_max) / f32(M);
-            M = reset_max;
-            w_sum = w_sum * ratio;
-        }
+        probe_scale(&probe, reset_max);
     }
-    textureStore(fullscreen_passes_write, location, 1u, vec4(f32(M), w_sum, weight, res_hash));
-#else // RESTIR_ANTI_CLUMPING
-    var data = textureLoad(fullscreen_passes_read, location, 1u, 0);
-    data.w = res_hash;
-    textureStore(fullscreen_passes_write, location, 1u, data);
 #endif // RESTIR_ANTI_CLUMPING
+    store_probe(probe, location);
 }
