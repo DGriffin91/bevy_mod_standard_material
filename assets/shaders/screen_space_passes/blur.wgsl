@@ -17,7 +17,6 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
     
 
-    var color_distance = 0.0;
 
     
 
@@ -69,7 +68,6 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         tot_w += w;
     }
     let final_color = tot/tot_w;
-    color_distance = distance(center_color, final_color);
 #ifdef APPLY_FILTER_TO_OUTPUT
     textureStore(fullscreen_passes_write, location, COLOR_LAYER, vec4(final_color, 1.0));
 #else
@@ -98,28 +96,31 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 #ifdef RESTIR_ANTI_CLUMPING
     var same_pos = 0u;
     var same_wdata = 0u;
-
+    var avg_color = vec3(0.0);
     for (var x = -1; x <= 1; x += 1) {
         for (var y = -1; y <= 1; y += 1) {
             let offset = vec2(x, y);
             if all(offset == vec2(0, 0)) {
                 continue;
             }
-            let s_probe = load_probe(location + offset);
+            var s_probe = load_probe(location + offset);
             if all(probe.ray_hit_pos == s_probe.ray_hit_pos) {
                 same_pos += 1u;
             }
             if probe.weight == s_probe.weight && probe.w_sum == s_probe.w_sum  {
                 same_wdata += 1u;
             }
+            avg_color += probe_resolve(&s_probe);
         }
     }
+    avg_color /= 6.0;
+    let color_distance = distance(avg_color, probe_resolve(&probe));
     
     let noise = fract(blue_noise_for_pixel(ulocation, globals.frame_count) + hash_noise(vec2(0, 0), globals.frame_count + 4275u));
 
-    if same_pos > 0u || color_distance > 1.0 {
+    if same_pos > 0u || color_distance > 3.0 {
         let derate = mix(f32(same_wdata + same_pos), color_distance, 0.85);
-        let reset_max = u32(f32(MAX_M) * mix(0.2, 0.5, noise / derate));
+        let reset_max = u32(f32(MAX_M) * mix(CLUMP_RESET_MIN, CLUMP_RESET_MAX, noise / derate));
         probe_scale(&probe, reset_max);
     }
 #endif // RESTIR_ANTI_CLUMPING

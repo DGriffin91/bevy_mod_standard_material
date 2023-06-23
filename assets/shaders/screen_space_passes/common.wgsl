@@ -6,14 +6,15 @@
 //#define RAY_MARCH
 #define USE_PATH_TRACED
 #define SPATIAL_REUSE
-#define FILTER_SSGI
+//#define FILTER_SSGI
 //#define APPLY_FILTER_TO_OUTPUT
 //#define SSAO_FOCUS
 //#define SSAO
 #define RESTIR_ANTI_CLUMPING
-const CLUMP_RESET_MIN = 0.15;
-const CLUMP_RESET_MAX = 0.3;
 #define SSR
+const CLUMP_RESET_MIN = 0.1;
+const CLUMP_RESET_MAX = 0.3;
+const CLUMP_RESET_COLOR_DIST_THRESH = 1.0;
 const SSR_SAMPLES = 0u;
 const FULL_SSR_SAMPLES = 3u;
 const MAX_M = 512u; //current max possible 2048

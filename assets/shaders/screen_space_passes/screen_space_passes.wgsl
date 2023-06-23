@@ -195,7 +195,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
         var candidates_radius = 7.0 * max(ssao_focus, 0.2);
         let path_trace_image_dims = vec2<f32>(textureDimensions(path_trace_image).xy);
         let pt_max_dist = 30.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
-        let coplanar_max_dist = 300.0;
+        let coplanar_max_dist = 300.0 * pixel_radius;
         for (var i = 0u; i < pt_samples; i+=1u) {
             var max_dist = pt_max_dist;
             let seed = (i + 1u) * pt_samples + globals.frame_count;

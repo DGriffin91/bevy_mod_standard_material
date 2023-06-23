@@ -26,7 +26,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     var ssao_focus = d.w;
 
     
-    var pixel_radius = pixel_radius_to_world(1.0, depth_ndc_to_linear(frag_coord.z), pbr.is_orthographic);
+    var pixel_radius = pixel_radius_to_world(1.0, depth_ndc_to_linear(full_screen_frag_coord.z), pbr.is_orthographic);
     // limit minimum pixel radius for things really close to the camera
     pixel_radius = max(pixel_radius, 0.001); 
 
@@ -35,32 +35,29 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     //-------------------------------------------------
     
 #ifdef SPATIAL_REUSE
-    var combined_color = vec3(0.0);
-    var combined_weight = 0.0;
 
 
-    
+    var combined_probe = new_probe();
+    combined_probe.pos = probe.pos;
+    combined_probe.reproject_fail = false;
 
-
-    var colors: array<vec3<f32>, 6>;
-    var weights: array<f32, 6>;
 
 
     { // sample from path traced
-        var samples = 5u;
-        var candidates_radius = 13.0 * max(ssao_focus, 0.3);
-        var max_dist = 150.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
-        var max_ws_dist = 1.0;
-        if probe.reproject_fail {
-            samples *= 2u;
-            candidates_radius *= 2.0;
-            max_dist *= 2.0;
-        }
-        //max_dist *= 1.0 + (1.0 - probe_get_progress(&probe)) * 3.0;
-        //candidates_radius *= 1.0 + (1.0 - probe_get_progress(&probe)) * 3.0;
+        var samples = 4u;
+        var candidates_radius = 16.0 * max(ssao_focus, 0.0);
+        let max_dist = 20.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
+        let coplanar_max_dist = 300.0 * pixel_radius;
+        //if probe.reproject_fail {
+        //    samples *= 2u;
+        //    candidates_radius *= 10.0;
+        //}
+        let low_m_mult = 1.0 + (1.0 - saturate(probe_get_progress(&probe) + 0.8)) * 10.0;
+        candidates_radius *= low_m_mult;
+    
         for (var i = 0u; i < samples; i+=1u) {
             var max_dist = max_dist;
-            let seed = (i + 1u) * samples + globals.frame_count;
+            let seed = (i + 1u) * samples;
             let white_frame_noise = white_frame_noise(seed + 34531u);
             let urand = fract_blue_noise_for_pixel(ufrag_coord, seed + globals.frame_count, white_frame_noise);  
             var offset = (urand.wz * 2.0 - 1.0);
@@ -87,10 +84,6 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
             let probe_to_cand_distance = distance(probe.pos, s_probe.pos);
 
-            if coplanar(probe.pos, nor_depth.xyz, s_probe.pos, pbr.N, 0.2, pixel_radius * 2.0) {
-                max_dist *= 3.0;
-            }
-
             let offset_nor_diff = max(dot(nor_depth.xyz, pbr.N) - 0.01, 0.0);
 
             //var gr = dot(s_probe.color, vec3<f32>(0.2126, 0.7152, 0.0722));
@@ -100,54 +93,31 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
                 dist_falloff = 1.0;
             }
 
-            let probe_dist_falloff = min(1.0 - saturate(probe_to_cand_distance / max_dist), 1.0 - saturate(probe_to_cand_distance / max_ws_dist));
-            
-            var new_weight = brdf * probe_dist_falloff * offset_nor_diff * (1.0 - saturate(length(offset)));
-            let prog = mix(0.0, 1.0, saturate(probe_get_progress(&s_probe) + 0.75));
-            new_weight *= prog;
-            new_weight = max(new_weight, 0.0); // * probe_weight_resolve(&s_probe)
-
-            combined_weight += new_weight;
-            
-            combined_color += probe_resolve(&s_probe) * new_weight;
-
-            colors[i] = probe_resolve(&s_probe) * new_weight;
-            weights[i] = new_weight;
-            
-        }
-
-        let prog = mix(0.0, 1.0, saturate(probe_get_progress(&probe) + 0.75));
-        let weight = probe.weight * prog;
-        let color = probe_resolve(&probe) * weight;
-        combined_weight += weight;
-        combined_color += color;
-
-        colors[5] = color;
-        weights[5] = weight;
-
-        var furthest_samp = 0u;
-        var max_div = 0.0;
-        var min_div = F32_MAX;
-        var closest_samp = 0u;
-
-        let col = clamp(combined_color / combined_weight, vec3(0.0), vec3(1000.0));
-
-        for (var i = 0u; i < samples; i+=1u) {
-            let dist = distance(colors[i], combined_color / 6.0);
-            if dist > max_div {
-                max_div = dist;
-                furthest_samp = i;
+            if coplanar(probe.pos, nor_depth.xyz, s_probe.pos, pbr.N, 0.2, pixel_radius * 4.0) {
+                max_dist = coplanar_max_dist;
             }
-            if dist < min_div {
-                min_div = dist;
-                closest_samp = i;
+
+            if probe_to_cand_distance > max_dist {
+                continue;
             }
+
+            let probe_dist_falloff = saturate(max_dist - probe_to_cand_distance) + 1.0;
+            
+            var new_weight = brdf * probe_dist_falloff * offset_nor_diff; // * (1.0 - saturate(length(offset)))
+            new_weight = max(new_weight, 0.0);
+
+            // TODO not the correct way to combine reservoirs
+            probe_update(&combined_probe, urand.x, new_weight * f32(s_probe.M), s_probe.ray_hit_pos, probe_resolve(&s_probe));
+            //probe_update(&combined_probe, urand.x, new_weight * s_probe.weight * f32(s_probe.M), s_probe.ray_hit_pos, s_probe.color);
+            combined_probe.M += s_probe.M;
         }
-        // TODO this fails badly if most of the near by samples failed reprojection
-        //combined_weight -= weights[furthest_samp];
-        //combined_color -= colors[furthest_samp];
-        combined_weight = weights[closest_samp];
-        combined_color = colors[closest_samp];
+        
+        // Also use the center probe, but make it a bit less likely to be selected (urand.x * 4.0)
+        let white_frame_noise = white_frame_noise(74319u);
+        let urand = fract_blue_noise_for_pixel(ufrag_coord, globals.frame_count, white_frame_noise); 
+        probe_update(&combined_probe, urand.x * 4.0, probe.weight * f32(probe.M), probe.ray_hit_pos, probe_resolve(&probe));
+        //let new_brdf = saturate(dot(pbr.N, normalize(combined_probe.ray_hit_pos - probe.pos)));
+        combined_probe.weight = (combined_probe.w_sum / f32(combined_probe.M));
     }
 
 #endif //SPATIAL_REUSE
@@ -160,7 +130,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
     let hysterisis = select(GI_HYSTERISIS, 1.0, probe.reproject_fail);
 #ifdef SPATIAL_REUSE
-    var gi = clamp(combined_color / combined_weight, vec3(0.0), vec3(1000.0));//probe_resolve(&probe);
+    var gi = probe_resolve(&combined_probe);
 #else
     var gi = probe_resolve(&probe);
 #endif

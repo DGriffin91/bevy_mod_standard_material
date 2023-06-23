@@ -83,9 +83,9 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 shadow_normal_bias: 0.2,
             },
             cascade_shadow_config: CascadeShadowConfigBuilder {
-                num_cascades: 4,
+                num_cascades: 2,
                 minimum_distance: 0.1,
-                maximum_distance: 100.0,
+                maximum_distance: 30.0,
                 first_cascade_far_bound: 5.0,
                 overlap_proportion: 0.2,
             }

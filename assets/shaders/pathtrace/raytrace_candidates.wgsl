@@ -75,9 +75,9 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
 
     //--------
     //--------
-    let pri_normal_bias = pixel_radius * 1.5;
-    let pri_dist_bias = pixel_radius * 1.5;
-    let min_hit_dist = pixel_radius * 1.5;
+    let pri_normal_bias = pixel_radius * 2.5;
+    let pri_dist_bias = pixel_radius * 2.5;
+    let min_hit_dist = pixel_radius * 2.5;
     //--------
     //--------
 
