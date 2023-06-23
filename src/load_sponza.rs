@@ -13,7 +13,7 @@ use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
         fxaa::Fxaa,
-        prepass::{DeferredPrepass, NormalPrepass},
+        prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
     pbr::CascadeShadowConfigBuilder,
@@ -66,6 +66,22 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         ..default()
     });
 
+    //commands
+    //    .spawn(SceneBundle {
+    //        scene: asset_server
+    //            .load("large_models/bistro/bistro_interior_wine/BistroInterior_Wine.gltf#Scene0"),
+    //        ..default()
+    //    })
+    //    .insert(PostProcScene);
+
+    //commands
+    //    .spawn(SceneBundle {
+    //        scene: asset_server
+    //            .load("large_models/bistro/bistro_interior_wine/BistroInterior_Wine.gltf#Scene0"),
+    //        ..default()
+    //    })
+    //    .insert(PostProcScene);
+
     // Sun
     commands
         .spawn(DirectionalLightBundle {
@@ -85,7 +101,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             cascade_shadow_config: CascadeShadowConfigBuilder {
                 num_cascades: 2,
                 minimum_distance: 0.1,
-                maximum_distance: 30.0,
+                maximum_distance: 32.0,
                 first_cascade_far_bound: 5.0,
                 overlap_proportion: 0.2,
             }
@@ -93,99 +109,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(GrifLight);
-    /*
-    // Sun Refl
-    commands
-        .spawn(SpotLightBundle {
-            transform: Transform::from_xyz(2.0, -0.0, -2.0)
-                .looking_at(Vec3::new(0.0, 999.0, 0.0), Vec3::X),
-            spot_light: SpotLight {
-                range: 15.0,
-                intensity: 1000.0,
-                color: Color::rgb(1.0, 0.97, 0.85),
-                shadows_enabled: false,
-                inner_angle: PI * 0.4,
-                outer_angle: PI * 0.5,
-                ..default()
-            },
-            ..default()
-        })
-        .insert(GrifLight);
 
-    // Sun refl 2nd bounce / misc bounces
-    commands
-        .spawn(SpotLightBundle {
-            transform: Transform::from_xyz(2.0, 5.5, -2.0)
-                .looking_at(Vec3::new(0.0, -999.0, 0.0), Vec3::X),
-            spot_light: SpotLight {
-                range: 13.0,
-                intensity: 800.0,
-                color: Color::rgb(1.0, 0.97, 0.85),
-                shadows_enabled: false,
-                inner_angle: PI * 0.3,
-                outer_angle: PI * 0.4,
-                ..default()
-            },
-            ..default()
-        })
-        .insert(GrifLight);
-
-
-    // sky
-    // seems to be making blocky artifacts. Even if it's the only light.
-    commands
-        .spawn(PointLightBundle {
-            point_light: PointLight {
-                color: Color::rgb(0.8, 0.9, 0.97),
-                intensity: 100000.0,
-                shadows_enabled: false,
-                range: 24.0,
-                radius: 3.0,
-                ..default()
-            },
-            transform: Transform::from_xyz(0.0, 30.0, 0.0),
-            ..default()
-        })
-        .insert(GrifLight);
-
-    // sky refl
-    commands
-        .spawn(SpotLightBundle {
-            transform: Transform::from_xyz(0.0, -2.0, 0.0)
-                .looking_at(Vec3::new(0.0, 999.0, 0.0), Vec3::X),
-            spot_light: SpotLight {
-                range: 11.0,
-                intensity: 300.0,
-                color: Color::rgb(0.8, 0.9, 0.97),
-                shadows_enabled: false,
-                inner_angle: PI * 0.46,
-                outer_angle: PI * 0.49,
-                ..default()
-            },
-            ..default()
-        })
-        .insert(GrifLight);
-
-    // sky low
-    commands
-        .spawn(SpotLightBundle {
-            transform: Transform::from_xyz(3.0, 2.0, 0.0)
-                .looking_at(Vec3::new(0.0, -999.0, 0.0), Vec3::X),
-            spot_light: SpotLight {
-                range: 12.0,
-                radius: 0.0,
-                intensity: 1800.0,
-                color: Color::rgb(0.8, 0.9, 0.95),
-                shadows_enabled: false,
-                inner_angle: PI * 0.34,
-                outer_angle: PI * 0.5,
-                ..default()
-            },
-            ..default()
-        })
-        .insert(GrifLight);
-
-    */
     let mut bloom_settings = BloomSettings::NATURAL;
     bloom_settings.intensity *= 0.35;
     // Camera
@@ -208,9 +132,9 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },
             NormalPrepass,
-            //DepthPrepass,
-            //MotionVectorPrepass,
-            TemporalAntiAliasBundle::default(),
+            DepthPrepass,
+            MotionVectorPrepass,
+            //TemporalAntiAliasBundle::default(),
             bloom_settings,
             CameraController {
                 walk_speed: 1.0,

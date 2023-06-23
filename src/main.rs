@@ -36,6 +36,7 @@ use bevy_coordinate_systems::CoordinateTransformationsPlugin;
 use bevy_hanabi::{BillboardModifier, HanabiPlugin, SetSizeModifier};
 use bevy_mod_bvh::{DynamicTLAS, StaticTLAS};
 
+use bistro::BistroPlugin;
 use copy_frame::CopyFramePlugin;
 use debug_view::DebugViewPlugin;
 use deferred_lighting_pass::CustomDeferredLightingPlugin;
@@ -79,9 +80,9 @@ fn main() {
         .add_plugin(CustomDeferredLightingPlugin)
         .add_plugin(HanabiPlugin)
         //-----------
-        //.add_plugin(BistroPlugin)
+        .add_plugin(BistroPlugin)
         //.add_plugin(KitchenPlugin)
-        .add_plugin(SponzaPlugin)
+        //.add_plugin(SponzaPlugin)
         //.add_plugin(HelmetScenePlugin)
         //.add_plugin(SphereScenePlugin)
         //-----------

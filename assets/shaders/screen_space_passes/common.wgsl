@@ -11,7 +11,7 @@
 //#define SSAO_FOCUS
 //#define SSAO
 #define RESTIR_ANTI_CLUMPING
-#define SSR
+//#define SSR
 const CLUMP_RESET_MIN = 0.1;
 const CLUMP_RESET_MAX = 0.3;
 const CLUMP_RESET_COLOR_DIST_THRESH = 1.0;

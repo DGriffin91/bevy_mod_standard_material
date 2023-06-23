@@ -52,9 +52,13 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
     let samples = 1u;
     //var sun_dir = normalize(vec3(-0.25, -0.24, 1.0)); // kitchen
     //let sun_color = pow(vec3(0.95, 0.79268, 0.637758), vec3(2.2)) * 20.0; // kitchen
-    var sun_dir = vec3(0.22, -1.0, -0.2); //sponza
-    let sun_color = vec3(0.95, 0.79268, 0.637758) * 20.0; //sponza
-    let sky_color = pow(vec3(0.875, 0.95, 0.995) * 2.0, vec3(2.2));
+    //let sky_color = pow(vec3(0.875, 0.95, 0.995) * 2.0, vec3(2.2)); // kitchen
+    //var sun_dir = vec3(0.22, -1.0, -0.2); // sponza
+    //let sun_color = vec3(0.95, 0.79268, 0.637758) * 20.0; // sponza
+    //let sky_color = pow(vec3(0.875, 0.95, 0.995) * 2.0, vec3(2.2)); // sponza
+    var sun_dir = vec3(0.22, -1.0, -0.2); //bistro
+    let sun_color = vec3(0.95, 0.79268, 0.637758) * 20.0; //bistro
+    let sky_color = pow(vec3(0.575, 0.7, 0.995) * 2.0, vec3(2.2)); // bistro
     let real_sun_angular_radius = 0.53 * 0.5 * PI / 180.0;
     let sun_angular_radius_cos = cos(real_sun_angular_radius);
     let nee = 1.0;// TODO - sun_angular_radius_cos;

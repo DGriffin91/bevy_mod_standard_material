@@ -158,6 +158,7 @@ fn pbr(
 
     // Diffuse strength inversely related to metallicity
     let diffuse_color = output_color.rgb * (1.0 - metallic);
+    //let diffuse_color = output_color.rgb;
 
     let R = reflect(-in.V, in.N);
 

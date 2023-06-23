@@ -1,6 +1,6 @@
 //kitchen
 const VOXEL_GRID_SIZE = 64;
-const VOXEL_SIZE = 1.0; // kitchen 0.25, sponza 1.0
+const VOXEL_SIZE = 2.2; // kitchen 0.25, sponza 1.0
 
 
 
