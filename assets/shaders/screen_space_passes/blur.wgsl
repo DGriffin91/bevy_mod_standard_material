@@ -119,7 +119,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
     if same_pos > 0u || color_distance > 1.0 {
         let derate = mix(f32(same_wdata + same_pos), color_distance, 0.85);
-        let reset_max = u32(f32(MAX_M) * mix(0.3, 0.6, noise / derate));
+        let reset_max = u32(f32(MAX_M) * mix(0.2, 0.5, noise / derate));
         probe_scale(&probe, reset_max);
     }
 #endif // RESTIR_ANTI_CLUMPING

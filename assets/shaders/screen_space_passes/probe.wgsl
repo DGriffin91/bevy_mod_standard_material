@@ -132,7 +132,11 @@ fn probe_get_progress(p: ptr<function, Probe>) -> f32 {
     return saturate(f32((*p).M) / f32(MAX_M));
 }
 
+fn probe_weight_resolve(p: ptr<function, Probe>) -> f32 {
+    return (*p).w_sum / max(0.00001, f32((*p).M) * (*p).weight);
+}
+
 fn probe_resolve(p: ptr<function, Probe>) -> vec3<f32> {
-    let w = (*p).w_sum / max(0.00001, f32((*p).M) * (*p).weight);
+    let w = probe_weight_resolve(p);
     return min((*p).color, (*p).color * w);
 }

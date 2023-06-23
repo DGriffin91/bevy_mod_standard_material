@@ -31,7 +31,6 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
 
     var probe = new_probe();
     probe.pos = world_position_offs;
-    var probe_proc_color = vec3(0.0);
     
     let closest_motion_vector = prepass_motion_vector(vec4<f32>(screen_uv * view.viewport.zw, 0.0, 0.0), 0u).xy;
     let screen_history_uv = screen_uv - closest_motion_vector;
@@ -40,7 +39,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
     var sample_coord = screen_space_passes_coord;
     var sample_uv = screen_uv;
 
-    let first_probe_pos = load_probe(sample_coord).pos;
+    let first_probe_pos = load_probe_pos(sample_coord).xyz;
     // locate closest probe
     if history_hit_screen {
         var selected_offset = vec2(0, 0);
@@ -68,7 +67,6 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
         sample_coord = screen_space_passes_coord + selected_offset;
         sample_uv = (vec2<f32>(sample_coord) + 0.5) / vec2<f32>(tex_dims);
         
-        probe_proc_color = textureLoad(fullscreen_passes_read, sample_coord, COLOR_LAYER, 0).xyz;
         probe = load_probe_with_pos(sample_coord, probe.pos);
     }
 
@@ -193,11 +191,11 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
 
 #ifdef USE_PATH_TRACED
     { // sample from path traced
-        let pt_samples = 7u;
-        let retry_coord_samples = 3u;
-        var candidates_radius = 7.0 * max(ssao_focus, 0.1);
+        let pt_samples = 4u;
+        var candidates_radius = 7.0 * max(ssao_focus, 0.2);
         let path_trace_image_dims = vec2<f32>(textureDimensions(path_trace_image).xy);
-        let pt_max_dist = 200.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
+        let pt_max_dist = 30.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
+        let coplanar_max_dist = 300.0;
         for (var i = 0u; i < pt_samples; i+=1u) {
             var max_dist = pt_max_dist;
             let seed = (i + 1u) * pt_samples + globals.frame_count;
@@ -227,8 +225,8 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
 
             let probe_to_cand_distance = distance(probe.pos, pt_world_position);
 
-            if coplanar(probe.pos, nor_depth.xyz, world_position_offs, pbr.N, 0.1, pixel_radius * 2.0) {
-                max_dist *= 3.0;
+            if coplanar(probe.pos, nor_depth.xyz, pt_world_position, pbr.N, 0.2, pixel_radius * 4.0) {
+                max_dist = coplanar_max_dist;
             }
 
             if probe_to_cand_distance > max_dist {
@@ -255,28 +253,16 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
     }
 #endif //USE_PATH_TRACED
 
+    var probe_proc_color = vec3(0.0);
 
+    if !probe.reproject_fail {
+        probe_proc_color = textureLoad(fullscreen_passes_read, sample_coord, COLOR_LAYER, 0).xyz;
+    }
 
-    let hysterisis = select(GI_HYSTERISIS, 1.0, probe.reproject_fail);
-
-    //let ssgi = max(col_accum / accum_tot_w, vec3(0.0));
-    //let ptgi = max((pt_col_accum / pt_accum_tot_w), vec3(0.0));
-    //var gi = (ssgi + ptgi + resolve_col) / 3.0;
-
-    var gi = probe_resolve(&probe);
-
-#ifdef SSAO
-    // GI is too broad for fine corner detail
-    gi *= ssao;
-#endif
-
-    //probe_proc_color = mix(probe_proc_color, mix(gi, ssgi, saturate(ssgi_conf - 0.1)), hysterisis);
-    probe_proc_color = mix(probe_proc_color, gi, hysterisis);
-
-    
+    textureStore(fullscreen_passes_write, ifrag_coord, COLOR_LAYER, vec4(probe_proc_color, ssao_focus));
 
     store_probe(probe, ifrag_coord);
-    textureStore(fullscreen_passes_write, ifrag_coord, COLOR_LAYER, vec4(probe_proc_color, ssao_focus));
+    
     
 
 
@@ -321,13 +307,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     var screen_uv = frag_coord.xy / ftarget_dims + frag_size * 0.5;
 
     var full_screen_frag_coord = vec4(screen_uv * view.viewport.zw, 0.0, 0.0);
-    let deferred_data = textureLoad(deferred_prepass_texture, vec2<i32>(full_screen_frag_coord.xy), 0);
-#ifdef WEBGL
-    full_screen_frag_coord.z = unpack_unorm3x4_plus_unorm_20(deferred_data.b).w;
-#else
-    full_screen_frag_coord.z = prepass_depth(full_screen_frag_coord, 0u);
-#endif
-    var pbr_input = pbr_input_from_deferred_gbuffer(full_screen_frag_coord, deferred_data);
+    let pbr_input = pbr_from_frag_coord(&full_screen_frag_coord);
 
     ssgi_restir(ifrag_coord, full_screen_frag_coord, pbr_input, 1u);
 }

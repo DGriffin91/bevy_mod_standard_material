@@ -42,6 +42,7 @@ use deferred_lighting_pass::CustomDeferredLightingPlugin;
 use kitchen::KitchenPlugin;
 
 use bevy::pbr::deferred::BypassPBRDeferredLightingPlugin;
+use load_sponza::SponzaPlugin;
 use path_trace::PathTracePlugin;
 use prepass_downsample::PrepassDownsamplePlugin;
 use screen_space_passes::ScreenSpacePassesPlugin;
@@ -79,8 +80,8 @@ fn main() {
         .add_plugin(HanabiPlugin)
         //-----------
         //.add_plugin(BistroPlugin)
-        .add_plugin(KitchenPlugin)
-        //.add_plugin(SponzaPlugin)
+        //.add_plugin(KitchenPlugin)
+        .add_plugin(SponzaPlugin)
         //.add_plugin(HelmetScenePlugin)
         //.add_plugin(SphereScenePlugin)
         //-----------

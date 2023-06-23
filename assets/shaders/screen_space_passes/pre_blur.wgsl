@@ -17,11 +17,8 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     var screen_uv = frag_coord.xy / ftarget_dims + frag_size * 0.5;
 
     
-    textureStore(fullscreen_passes_write, ifrag_coord, 0u, textureLoad(fullscreen_passes_read, ifrag_coord, 0u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 1u, textureLoad(fullscreen_passes_read, ifrag_coord, 1u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 2u, textureLoad(fullscreen_passes_read, ifrag_coord, 2u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 3u, textureLoad(fullscreen_passes_read, ifrag_coord, 3u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 4u, textureLoad(fullscreen_passes_read, ifrag_coord, 4u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 5u, textureLoad(fullscreen_passes_read, ifrag_coord, 5u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 6u, textureLoad(fullscreen_passes_read, ifrag_coord, 6u, 0));
+    textureStore(fullscreen_passes_write, ifrag_coord, RESERVIOR_LAYER0, textureLoad(fullscreen_passes_read, ifrag_coord, RESERVIOR_LAYER0, 0));
+    textureStore(fullscreen_passes_write, ifrag_coord, RESERVIOR_LAYER1, textureLoad(fullscreen_passes_read, ifrag_coord, RESERVIOR_LAYER1, 0));
+    textureStore(fullscreen_passes_write, ifrag_coord, COLOR_LAYER, textureLoad(fullscreen_passes_read, ifrag_coord, COLOR_LAYER, 0));
+    textureStore(fullscreen_passes_write, ifrag_coord, SSR_LAYER, textureLoad(fullscreen_passes_read, ifrag_coord, SSR_LAYER, 0));
 }

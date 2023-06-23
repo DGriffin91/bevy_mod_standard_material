@@ -16,13 +16,165 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let frag_size = 1.0 / ftarget_dims;
     var screen_uv = frag_coord.xy / ftarget_dims + frag_size * 0.5;
 
-    
-    textureStore(fullscreen_passes_write, ifrag_coord, 0u, textureLoad(fullscreen_passes_read, ifrag_coord, 0u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 1u, textureLoad(fullscreen_passes_read, ifrag_coord, 1u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 2u, textureLoad(fullscreen_passes_read, ifrag_coord, 2u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 3u, textureLoad(fullscreen_passes_read, ifrag_coord, 3u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 4u, textureLoad(fullscreen_passes_read, ifrag_coord, 4u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 5u, textureLoad(fullscreen_passes_read, ifrag_coord, 5u, 0));
-    textureStore(fullscreen_passes_write, ifrag_coord, 6u, textureLoad(fullscreen_passes_read, ifrag_coord, 6u, 0));
+    var full_screen_frag_coord = vec4(screen_uv * view.viewport.zw, 0.0, 0.0);
+    let pbr = pbr_from_frag_coord(&full_screen_frag_coord);
 
+    var probe = load_probe(ifrag_coord);
+
+    let d = textureLoad(fullscreen_passes_read, ifrag_coord, COLOR_LAYER, 0);
+    var probe_proc_color = d.xyz;
+    var ssao_focus = d.w;
+
+    
+    var pixel_radius = pixel_radius_to_world(1.0, depth_ndc_to_linear(frag_coord.z), pbr.is_orthographic);
+    // limit minimum pixel radius for things really close to the camera
+    pixel_radius = max(pixel_radius, 0.001); 
+
+    //-------------------------------------------------
+    //-------------------------------------------------
+    //-------------------------------------------------
+    
+#ifdef SPATIAL_REUSE
+    var combined_color = vec3(0.0);
+    var combined_weight = 0.0;
+
+
+    
+
+
+    var colors: array<vec3<f32>, 6>;
+    var weights: array<f32, 6>;
+
+
+    { // sample from path traced
+        var samples = 5u;
+        var candidates_radius = 13.0 * max(ssao_focus, 0.3);
+        var max_dist = 150.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
+        var max_ws_dist = 1.0;
+        if probe.reproject_fail {
+            samples *= 2u;
+            candidates_radius *= 2.0;
+            max_dist *= 2.0;
+        }
+        //max_dist *= 1.0 + (1.0 - probe_get_progress(&probe)) * 3.0;
+        //candidates_radius *= 1.0 + (1.0 - probe_get_progress(&probe)) * 3.0;
+        for (var i = 0u; i < samples; i+=1u) {
+            var max_dist = max_dist;
+            let seed = (i + 1u) * samples + globals.frame_count;
+            let white_frame_noise = white_frame_noise(seed + 34531u);
+            let urand = fract_blue_noise_for_pixel(ufrag_coord, seed + globals.frame_count, white_frame_noise);  
+            var offset = (urand.wz * 2.0 - 1.0);
+            var offset_uv = (offset / ftarget_dims) * candidates_radius;
+            var coord = vec2<i32>((screen_uv + offset_uv) * ftarget_dims);
+            
+            let clamped_coord = clamp(coord, vec2(0), vec2<i32>(ftarget_dims));
+
+            // if the coord is off the screen, mirror it back onto the screen
+            let flip = vec2<f32>(clamped_coord == coord) * 2.0 - 1.0;
+            offset = offset * flip;
+            offset_uv = offset_uv * flip;
+            coord = vec2<i32>((screen_uv + offset_uv) * ftarget_dims);
+
+            
+            var s_probe = load_probe(coord);
+
+            let new_ray_hit_pos = s_probe.ray_hit_pos.xyz;
+            let direction = normalize(new_ray_hit_pos - s_probe.pos);
+            let dist = distance(new_ray_hit_pos, s_probe.pos);
+            
+            // TODO select mip based on ftarget_dims relative to ftarget_dims
+            let nor_depth = textureLoad(prepass_downsample, vec2<i32>(ftarget_dims * (screen_uv + offset_uv)), 0);
+
+            let probe_to_cand_distance = distance(probe.pos, s_probe.pos);
+
+            if coplanar(probe.pos, nor_depth.xyz, s_probe.pos, pbr.N, 0.2, pixel_radius * 2.0) {
+                max_dist *= 3.0;
+            }
+
+            let offset_nor_diff = max(dot(nor_depth.xyz, pbr.N) - 0.01, 0.0);
+
+            //var gr = dot(s_probe.color, vec3<f32>(0.2126, 0.7152, 0.0722));
+            let brdf = max(dot(pbr.N, direction), 0.0);
+            var dist_falloff = (1.0 / (1.0 + dist * dist));
+            if dist >= F16_MAX || dist < 0.0 { // hit sky
+                dist_falloff = 1.0;
+            }
+
+            let probe_dist_falloff = min(1.0 - saturate(probe_to_cand_distance / max_dist), 1.0 - saturate(probe_to_cand_distance / max_ws_dist));
+            
+            var new_weight = brdf * probe_dist_falloff * offset_nor_diff * (1.0 - saturate(length(offset)));
+            let prog = mix(0.0, 1.0, saturate(probe_get_progress(&s_probe) + 0.75));
+            new_weight *= prog;
+            new_weight = max(new_weight, 0.0); // * probe_weight_resolve(&s_probe)
+
+            combined_weight += new_weight;
+            
+            combined_color += probe_resolve(&s_probe) * new_weight;
+
+            colors[i] = probe_resolve(&s_probe) * new_weight;
+            weights[i] = new_weight;
+            
+        }
+
+        let prog = mix(0.0, 1.0, saturate(probe_get_progress(&probe) + 0.75));
+        let weight = probe.weight * prog;
+        let color = probe_resolve(&probe) * weight;
+        combined_weight += weight;
+        combined_color += color;
+
+        colors[5] = color;
+        weights[5] = weight;
+
+        var furthest_samp = 0u;
+        var max_div = 0.0;
+        var min_div = F32_MAX;
+        var closest_samp = 0u;
+
+        let col = clamp(combined_color / combined_weight, vec3(0.0), vec3(1000.0));
+
+        for (var i = 0u; i < samples; i+=1u) {
+            let dist = distance(colors[i], combined_color / 6.0);
+            if dist > max_div {
+                max_div = dist;
+                furthest_samp = i;
+            }
+            if dist < min_div {
+                min_div = dist;
+                closest_samp = i;
+            }
+        }
+        // TODO this fails badly if most of the near by samples failed reprojection
+        //combined_weight -= weights[furthest_samp];
+        //combined_color -= colors[furthest_samp];
+        combined_weight = weights[closest_samp];
+        combined_color = colors[closest_samp];
+    }
+
+#endif //SPATIAL_REUSE
+
+    //-------------------------------------------------
+    //-------------------------------------------------
+    //-------------------------------------------------
+
+
+
+    let hysterisis = select(GI_HYSTERISIS, 1.0, probe.reproject_fail);
+#ifdef SPATIAL_REUSE
+    var gi = clamp(combined_color / combined_weight, vec3(0.0), vec3(1000.0));//probe_resolve(&probe);
+#else
+    var gi = probe_resolve(&probe);
+#endif
+
+#ifdef SSAO
+    // GI is too broad for fine corner detail
+    gi *= ssao_focus;
+#endif
+
+    probe_proc_color = mix(probe_proc_color, gi, hysterisis);
+    textureStore(fullscreen_passes_write, ifrag_coord, COLOR_LAYER, vec4(probe_proc_color, ssao_focus));
+    //----------------
+    
+    store_probe(probe, ifrag_coord);
+
+    textureStore(fullscreen_passes_write, ifrag_coord, SSR_LAYER, textureLoad(fullscreen_passes_read, ifrag_coord, SSR_LAYER, 0));
 }
