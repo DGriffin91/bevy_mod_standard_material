@@ -19,9 +19,44 @@ struct Hit {
     triangle_idx: i32,
 };
 
+struct Stats {
+    aabb_hit_tlas: u32,
+    aabb_hit_blas: u32,
+    tri_hit: u32,
+    tri_test: u32,
+    node_traversal: u32,
+}
+
+fn vis_stat(x: f32, step_value: f32) -> vec3<f32> {
+    var col = vec3(0.0);
+    let stat = x / step_value;
+
+    col = vec3(stat, max(stat - 1.0, 0.0), max(stat - 2.0, 0.0));
+
+    if stat > 1.0 {
+        col.r = 0.0;
+    } if stat > 2.0 {
+        col.g = 0.0;
+    }
+
+    return col;
+}
+
+fn stats_new() -> Stats {
+    var stats: Stats;
+    stats.aabb_hit_tlas = 0u;
+    stats.aabb_hit_blas = 0u;
+    stats.tri_hit = 0u;
+    stats.node_traversal = 0u;
+    return stats;
+}
+
 struct SceneQuery {
     hit: Hit,
     static_tlas: bool,
+#ifdef RT_STATS
+    stats: Stats,
+#endif
 };
 
 struct Aabb {
@@ -127,7 +162,11 @@ fn intersects_triangle(ray: Ray, p1: vec3<f32>, p2: vec3<f32>, p3: vec3<f32>) ->
 }
 
 // just check if the ray intersects a plane in the aabb with the normal of the tri
-fn traverse_blas_fast(instance: MeshData, ray: Ray, min_dist: f32) -> Hit {    
+fn traverse_blas_fast(instance: MeshData, ray: Ray, min_dist: f32,
+#ifdef RT_STATS
+    stats: ptr<function, Stats>
+#endif
+) -> Hit {    
     //TODO Should we start at 1 since we already tested aginst the first AABB in the TLAS?
     var next_idx = 0; 
     var hit: Hit;
@@ -135,7 +174,7 @@ fn traverse_blas_fast(instance: MeshData, ray: Ray, min_dist: f32) -> Hit {
     var aabb_inter = vec2(0.0);
     var last_aabb_min = vec3(0.0);
     var last_aabb_max = vec3(0.0);
-    var min_dist = min_dist;
+    var min_dist = min(min_dist, F32_MAX);
     while (next_idx < instance.blas_count) {
         let blas = blas_buffer[next_idx + instance.blas_start];
         if blas.entry_or_shape_idx < 0 {
@@ -162,19 +201,24 @@ fn traverse_blas_fast(instance: MeshData, ray: Ray, min_dist: f32) -> Hit {
             aabb_inter = intersects_aabb_seg(ray, blas.aabb_min, blas.aabb_max);
             next_idx = select(blas.exit_idx, 
                               blas.entry_or_shape_idx, 
-                              aabb_inter.x < min(min_dist, hit.distance));
+                              intersects_aabb(ray, blas.aabb_min.xyz, blas.aabb_max.xyz) < min_dist);
         }
+            
     }
     return hit;
 }
 
-fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32) -> Hit {    
+fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32,
+#ifdef RT_STATS
+    stats: ptr<function, Stats>
+#endif
+) -> Hit {    
     //TODO Should we start at 1 since we already tested aginst the first AABB in the TLAS?
     var next_idx = 0; 
     var hit: Hit;
     hit.distance = F32_MAX;
     var aabb_inter = vec2(0.0);
-    var min_dist = min_dist;
+    var min_dist = min(min_dist, F32_MAX);
     while (next_idx < instance.blas_count) {
         let blas = blas_buffer[next_idx + instance.blas_start];
         if blas.entry_or_shape_idx < 0 {
@@ -197,23 +241,50 @@ fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32) -> Hit {
             }
             // Exit the current node.
             next_idx = blas.exit_idx;
+#ifdef RT_STATS                  
+            (*stats).node_traversal += 1u;               
+            (*stats).tri_test += 1u;
+            if intr.distance < F32_MAX {        
+                (*stats).tri_hit += 1u;
+            }
+#endif
         } else {
             // If entry_index is not -1 and the AABB test passes, then
             // proceed to the node in entry_index (which goes down the bvh branch).
 
             // If entry_index is not -1 and the AABB test fails, then
             // proceed to the node in exit_index (which defines the next untested partition).
+            
+            //let half_size = (blas.aabb_max.xyz - blas.aabb_min.xyz) * 0.5;
+            //if distance(ray.origin, blas.aabb_min.xyz + half_size) - length(half_size) < min_dist {
             next_idx = select(blas.exit_idx, 
                               blas.entry_or_shape_idx, 
                               intersects_aabb(ray, blas.aabb_min.xyz, blas.aabb_max.xyz) < min_dist);
+#ifdef RT_STATS                  
+                (*stats).aabb_hit_blas += 1u;
+#endif
+            //} else {
+            //    next_idx = blas.exit_idx;
+            //}
         }
     }
     return hit;
 }
 
 fn scene_query(ray: Ray) -> SceneQuery {
-    let hit_static = static_traverse_tlas(ray, F32_MAX);
-    let hit_dynamic = dynamic_traverse_tlas(ray, hit_static.distance);
+#ifdef RT_STATS
+    var stats = stats_new();
+#endif
+    let hit_static = static_traverse_tlas(ray, F32_MAX,
+#ifdef RT_STATS
+    &stats
+#endif
+    );
+    let hit_dynamic = dynamic_traverse_tlas(ray, hit_static.distance,
+#ifdef RT_STATS
+    &stats
+#endif
+    );
 
     var query: SceneQuery;
     if hit_static.distance < hit_dynamic.distance {
@@ -223,6 +294,9 @@ fn scene_query(ray: Ray) -> SceneQuery {
         query.hit = hit_dynamic;
         query.static_tlas = false;
     }
+#ifdef RT_STATS
+    query.stats = stats;
+#endif
     return query;
 }
 

@@ -118,7 +118,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     
     let noise = fract(blue_noise_for_pixel(ulocation, globals.frame_count) + hash_noise(vec2(0, 0), globals.frame_count + 4275u));
 
-    if same_pos > 0u || color_distance > 3.0 {
+    if same_pos > 0u || color_distance > CLUMP_RESET_COLOR_DIST_THRESH {
         let derate = mix(f32(same_wdata + same_pos), color_distance, 0.85);
         let reset_max = u32(f32(MAX_M) * mix(CLUMP_RESET_MIN, CLUMP_RESET_MAX, noise / derate));
         probe_scale(&probe, reset_max);

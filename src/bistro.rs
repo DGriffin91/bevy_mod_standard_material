@@ -117,9 +117,9 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },
             NormalPrepass,
-            //DepthPrepass,
-            //MotionVectorPrepass,
-            TemporalAntiAliasBundle::default(),
+            DepthPrepass,
+            MotionVectorPrepass,
+            //TemporalAntiAliasBundle::default(),
             bloom_settings,
             CameraController {
                 walk_speed: 1.0,

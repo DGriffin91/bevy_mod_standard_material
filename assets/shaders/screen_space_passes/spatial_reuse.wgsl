@@ -46,7 +46,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     { // sample from path traced
         var samples = 4u;
         var candidates_radius = 16.0 * max(ssao_focus, 0.0);
-        let max_dist = 20.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
+        let max_dist = 40.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
         let coplanar_max_dist = 300.0 * pixel_radius;
         //if probe.reproject_fail {
         //    samples *= 2u;

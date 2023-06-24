@@ -44,25 +44,31 @@ pub struct GrifLight;
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     println!("Loading models, generating mipmaps");
 
-    // sponza
-    commands
-        .spawn(SceneBundle {
-            scene: asset_server.load("main_sponza/NewSponza_Main_glTF_002.gltf#Scene0"),
-            ..default()
-        })
-        .insert(PostProcScene);
-
-    // curtains
-    commands
-        .spawn(SceneBundle {
-            scene: asset_server.load("PKG_A_Curtains/NewSponza_Curtains_glTF.gltf#Scene0"),
-            ..default()
-        })
-        .insert(PostProcScene);
+    //    // sponza
+    //    commands
+    //        .spawn(SceneBundle {
+    //            scene: asset_server.load("main_sponza/NewSponza_Main_glTF_002.gltf#Scene0"),
+    //            ..default()
+    //        })
+    //        .insert(PostProcScene);
+    //
+    //    // curtains
+    //    commands
+    //        .spawn(SceneBundle {
+    //            scene: asset_server.load("PKG_A_Curtains/NewSponza_Curtains_glTF.gltf#Scene0"),
+    //            ..default()
+    //        })
+    //        .insert(PostProcScene);
+    //
+    //    commands.spawn(SceneBundle {
+    //        scene: asset_server.load("models/FlightHelmet/FlightHelmet.gltf#Scene0"),
+    //        transform: Transform::from_xyz(0.0, 0.0, -2.0),
+    //        ..default()
+    //    });
 
     commands.spawn(SceneBundle {
-        scene: asset_server.load("models/FlightHelmet/FlightHelmet.gltf#Scene0"),
-        transform: Transform::from_xyz(0.0, 0.0, -2.0),
+        scene: asset_server.load("large_models/san-miguel/san-miguel.gltf#Scene0"),
+        transform: Transform::from_xyz(-18.0, 0.0, 0.0),
         ..default()
     });
 

@@ -68,9 +68,9 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     
 
     //return frame_col;
-    return vec4(vec3(frame_col.rgb), 1.0);
+    //return vec4(vec3(frame_col.rgb), 1.0);
     //return vec4(vec3(f32(ray_hit_pos.w)), 1.0);
-    //return vec4(path_trace_data.rgb, 1.0);
+    return vec4(path_trace_data.rgb, 1.0);
     //return vec4(vec3(last_world_cache.rgb), 1.0);
     //return vec4(closest_motion_vector, 0.0, 1.0);
 }
