@@ -21,7 +21,7 @@ fn get_screen_ray(uv: vec2<f32>) -> Ray {
 
 
 
-/*
+
 @compute @workgroup_size(8, 8, 1)
 fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     //if true {return;}
@@ -33,9 +33,9 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     textureStore(target_tex, location, 2u, vec4(cand.ray_hit_pos, cand.distance));
     //textureStore(target_tex, location, 3u, vec4(cand.direction, 0.0));
 }
-*/
 
 
+/*
 @compute @workgroup_size(8, 8, 1)
 fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let ufrag_coord = invocation_id.xy;
@@ -52,7 +52,7 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
     let ray = get_screen_ray(screen_uv);
 
-    let query = scene_query(ray);
+    let query = scene_query(ray, F32_MAX);
 
     var col = vec4(0.0);
 
@@ -76,7 +76,8 @@ fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         col = vec4(0.0);    
     }
 
-    col = vec4(vis_stat(f32(query.stats.aabb_hit_blas + query.stats.aabb_hit_tlas), 500.0), 1.0);
+    //col = vec4(vis_stat(f32(query.stats.aabb_hit_blas + query.stats.aabb_hit_tlas), 500.0), 1.0);
     
     textureStore(target_tex, ifrag_coord, 0u, vec4(col.rgb, 0.0));
 }
+*/

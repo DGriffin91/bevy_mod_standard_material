@@ -50,7 +50,7 @@ fn reference_update(invocation_id: vec3<u32>) -> vec4<f32> {
 
     // Primary ray for material/normal of this frag
     let primary_ray = get_screen_ray(screen_uv);
-    var query = scene_query(primary_ray);
+    var query = scene_query(primary_ray, F32_MAX);
     var primary_mat: MaterialData;
     var primary_roughness = 0.0;
     var surface_normal = vec3(0.0);
@@ -81,7 +81,7 @@ fn reference_update(invocation_id: vec3<u32>) -> vec4<f32> {
 #ifdef DIFFUSE_DIRECT
     // Trace to sun
     var ray = new_ray(world_position_ws, -sun_dir);
-    query = scene_query(ray);
+    query = scene_query(ray, F32_MAX);
     if query.hit.distance == F32_MAX {
         diffuse_direct = sun_color * max(dot(surface_normal, -sun_dir), 0.0);    
     }
@@ -143,7 +143,7 @@ fn reference_update(invocation_id: vec3<u32>) -> vec4<f32> {
         // with the depth ray march we need to actually trace a ray
         if !depth_march_hit {
 #endif //DEPTH_MARCH
-            var query = scene_query(ray);
+            var query = scene_query(ray, F32_MAX);
 
             var hit_dist = query.hit.distance;
             ray_hit_pos = ray.origin + ray.direction * hit_dist;
@@ -160,7 +160,7 @@ fn reference_update(invocation_id: vec3<u32>) -> vec4<f32> {
                 // Trace to sun
                 if hit_dist != F32_MAX {
                     var sray = new_ray(ray_hit_pos, -sun_dir);
-                    query = scene_query(sray);
+                    query = scene_query(sray, F32_MAX);
                     if query.hit.distance == F32_MAX {
                         diffuse_indirect += hit_color * sun_color;
                     }
@@ -182,7 +182,7 @@ fn reference_update(invocation_id: vec3<u32>) -> vec4<f32> {
         let trace_dir_ws = brdf_sample.wi * tangent_to_world;
 
         ray = new_ray(world_position_ws, trace_dir_ws);
-        query = scene_query(ray);
+        query = scene_query(ray, F32_MAX);
 
         ray_hit_pos = ray.origin + ray.direction * query.hit.distance;
         if query.hit.distance != F32_MAX {
@@ -196,7 +196,7 @@ fn reference_update(invocation_id: vec3<u32>) -> vec4<f32> {
 #endif
                 // Trace to sun
                 let sray = new_ray(ray_hit_pos, -sun_dir);
-                query = scene_query(sray);
+                query = scene_query(sray, F32_MAX);
                 if query.hit.distance == F32_MAX {
                     // TODO we are assuming the surface we hit is not metallic
                     specular += sun_color * brdf_sample.value_over_pdf;
@@ -248,7 +248,7 @@ fn fragment_primary_rays(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
 
     let ray = get_screen_ray(screen_uv);
 
-    let query = scene_query(ray);
+    let query = scene_query(ray, F32_MAX);
 
     if query.hit.distance != F32_MAX {
         var normal = vec3(0.0);

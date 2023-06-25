@@ -11,15 +11,15 @@
 //#define SSAO_FOCUS
 //#define SSAO
 #define RESTIR_ANTI_CLUMPING
-//#define SSR
-const CLUMP_RESET_MIN = 0.1;
-const CLUMP_RESET_MAX = 0.3;
+#define SSR
+const CLUMP_RESET_MIN = 0.2;
+const CLUMP_RESET_MAX = 0.4;
 const CLUMP_RESET_COLOR_DIST_THRESH = 1.0;
 const SSR_SAMPLES = 0u;
 const FULL_SSR_SAMPLES = 3u;
-const MAX_M = 512u; //current max possible 2048
+const MAX_M = 1024u; //current max possible 2048
 const GI_HYSTERISIS = 1.0;//0.08; //0.2
-const SSGI_PIX_RADIUS_DIST = 100.0;
+const SSGI_PIX_RADIUS_DIST = 500.0;
 
 const RESERVIOR_LAYER0 = 0u;
 const RESERVIOR_LAYER1 = 1u;

@@ -1,6 +1,6 @@
 //kitchen
-const VOXEL_GRID_SIZE = 64;
-const VOXEL_SIZE = 2.2; // kitchen 0.25, sponza 1.0
+const VOXEL_GRID_SIZE = 96;
+const VOXEL_SIZE = 0.6; // kitchen 0.25, sponza 1.0
 
 
 
@@ -38,7 +38,9 @@ fn march_voxel_grid(origin: vec3<f32>, direction: vec3<f32>, max_steps: u32, ski
     for (var i = 0u; i <= max_steps; i += 1u) {
         if i >= skip_steps {
             hit_voxel = textureLoad(voxel_cache, current_voxel, 0);
-            if hit_voxel.w != 0.0 && (time - hit_voxel.w) < max_age {
+            let age = time - hit_voxel.w;
+            if age > 0.0 && age < max_age {
+            //if (time - hit_voxel.w) < max_age {
                 hit.color = hit_voxel.rgb;
                 hit.age = hit_voxel.w;
                 hit.t = distance(origin, position_voxel_to_world(current_voxel));

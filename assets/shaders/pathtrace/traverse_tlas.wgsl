@@ -6,7 +6,7 @@
 
 // IF ONE OF THESE FUNCTIONS ARE UPDATED, THEY ALL SHOULD BE
 
-fn static_traverse_tlas(ray: Ray, min_dist: f32,
+fn static_traverse_tlas(ray: Ray, min_dist: f32, any_hit: bool,
 #ifdef RT_STATS
     stats: ptr<function, Stats>
 #endif
@@ -39,13 +39,17 @@ fn static_traverse_tlas(ray: Ray, min_dist: f32,
             let world_minp = ray.origin + ray.direction * min_dist;
             let local_minp = (world_to_local * vec4(world_minp, 1.0)).xyz;
 
-            var new_hit = traverse_blas(instance.mesh_data, local_ray, distance(local_ray.origin, local_minp),
+            var new_hit = traverse_blas(instance.mesh_data, local_ray, distance(local_ray.origin, local_minp), any_hit,
 #ifdef RT_STATS  
             stats
 #endif
             );
             
             if new_hit.distance < F32_MAX {
+                if any_hit {
+                    new_hit.distance = 0.0;
+                    return new_hit;
+                }
                 //because of non uniform scale, TODO is there a faster way?
                 let local_hitp = local_ray.origin + local_ray.direction * new_hit.distance;
                 let world_hitp = (local_to_world * vec4(local_hitp, 1.0)).xyz;
@@ -79,7 +83,7 @@ fn static_traverse_tlas(ray: Ray, min_dist: f32,
     return hit;
 }
 
-fn dynamic_traverse_tlas(ray: Ray, min_dist: f32,
+fn dynamic_traverse_tlas(ray: Ray, min_dist: f32, any_hit: bool,
 #ifdef RT_STATS
     stats: ptr<function, Stats>
 #endif
@@ -112,13 +116,17 @@ fn dynamic_traverse_tlas(ray: Ray, min_dist: f32,
             let world_minp = ray.origin + ray.direction * min_dist;
             let local_minp = (world_to_local * vec4(world_minp, 1.0)).xyz;
 
-            var new_hit = traverse_blas(instance.mesh_data, local_ray, distance(local_ray.origin, local_minp),
+            var new_hit = traverse_blas(instance.mesh_data, local_ray, distance(local_ray.origin, local_minp), any_hit,
 #ifdef RT_STATS  
             stats
 #endif
             );
             
             if new_hit.distance < F32_MAX {
+                if any_hit {
+                    new_hit.distance = 0.0;
+                    return new_hit;
+                }
                 //because of non uniform scale, TODO is there a faster way?
                 let local_hitp = local_ray.origin + local_ray.direction * new_hit.distance;
                 let world_hitp = (local_to_world * vec4(local_hitp, 1.0)).xyz;

@@ -9,6 +9,7 @@
 #define VOXEL_1ST_BOUNCE_FALLBACK
 #define SPECULAR
 #define CDIFFUSE_INDIRECT
+//#define USE_VOXEL_MARCH
 //#define CDIFFUSE_DIRECT
 //#define DEPTH_MARCH
 #define CAPPLY_PRIMARY_COLOR
@@ -22,8 +23,9 @@ struct Candidate {
 }
 
 fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
-
+    //if true {return cand;}
     var cand: Candidate;
+
     cand.color = vec3(0.0);
     cand.world_position = vec3(0.0);
     cand.ray_hit_pos = vec3(0.0);
@@ -50,15 +52,15 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
 
 
     let samples = 1u;
-    //var sun_dir = normalize(vec3(-0.25, -0.24, 1.0)); // kitchen
-    //let sun_color = pow(vec3(0.95, 0.79268, 0.637758), vec3(2.2)) * 20.0; // kitchen
-    //let sky_color = pow(vec3(0.875, 0.95, 0.995) * 2.0, vec3(2.2)); // kitchen
+    var sun_dir = normalize(vec3(-0.25, -0.24, 1.0)); // kitchen
+    let sun_color = pow(vec3(0.95, 0.79268, 0.637758), vec3(2.2)) * 20.0; // kitchen
+    let sky_color = pow(vec3(0.875, 0.95, 0.995) * 2.0, vec3(2.2)); // kitchen
     //var sun_dir = vec3(0.22, -1.0, -0.2); // sponza
     //let sun_color = vec3(0.95, 0.79268, 0.637758) * 20.0; // sponza
     //let sky_color = pow(vec3(0.875, 0.95, 0.995) * 2.0, vec3(2.2)); // sponza
-    var sun_dir = vec3(0.22, -1.0, -0.2); //bistro
-    let sun_color = vec3(0.95, 0.79268, 0.637758) * 20.0; //bistro
-    let sky_color = pow(vec3(0.575, 0.7, 0.995) * 2.0, vec3(2.2)); // bistro
+    //var sun_dir = vec3(0.22, -1.0, -0.2); //bistro
+    //let sun_color = vec3(0.95, 0.79268, 0.637758) * 20.0; //bistro
+    //let sky_color = pow(vec3(0.575, 0.7, 0.995) * 2.0, vec3(2.2)); // bistro
     let real_sun_angular_radius = 0.53 * 0.5 * PI / 180.0;
     let sun_angular_radius_cos = cos(real_sun_angular_radius);
     let nee = 1.0;// TODO - sun_angular_radius_cos;
@@ -116,7 +118,11 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
     // random direction trace
     var ray = new_ray(world_position + V * pri_dist_bias + surface_normal * pri_normal_bias, direction);
 
-    var query = scene_query(ray);
+    var max_ray_dist1 = F32_MAX;
+    var vox_vis_dist = distance(vec3(0.0), vec3(VOXEL_SIZE));
+
+    var query = scene_query(ray, max_ray_dist1);
+
 
     cand.world_position = ray.origin;
     cand.distance = query.hit.distance;
@@ -141,7 +147,6 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
         screen_color = get_screen_color_from_pos(cand.ray_hit_pos, ray.direction);
     }
 #endif
-
     var ray_hit_voxel = ivoxel_clamp(vec3<i32>(position_world_to_fvoxel(cand.ray_hit_pos)));
     var cache_color = vec4(0.0);
     var use_voxel_for_1st_bounce = false;
@@ -170,10 +175,18 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
             if urand.z > 0.5 {
                 // Trace to sun
                 var sray = new_ray(cand.ray_hit_pos, -sun_dir);
-                let sun_query = scene_query(sray);
-                if sun_query.hit.distance == F32_MAX {
+#ifdef USE_VOXEL_MARCH
+                if !scene_query_any_hit(sray, vox_vis_dist) {
+                    let hit = march_voxel_grid(cand.ray_hit_pos, -sun_dir, 512u, 1u, 0.1);   
+                    if hit.t < 0.0 {
+                        bounce1_color += sun_color * nee;
+                    }
+                }
+#else
+                if !scene_query_any_hit(sray, max_ray_dist1) {
                     bounce1_color += sun_color * nee;
                 }
+#endif
             } else {
                 // trace 2nd bounce
                 let hit_surface_normal = compute_tri_normal(query);
@@ -184,7 +197,19 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
                 bounce_direction = normalize(bounce_direction * tangent_to_world);
                 let origin = cand.ray_hit_pos + -ray.direction * pri_dist_bias + hit_surface_normal * pri_normal_bias;
                 var bray = new_ray(origin, bounce_direction);
-                let bounce_query = scene_query(bray);        
+#ifdef USE_VOXEL_MARCH
+                if !scene_query_any_hit(bray, vox_vis_dist) {
+                    let hit = march_voxel_grid(origin, bounce_direction, 512u, 1u, 0.1);   
+                    if hit.t > 0.0 {
+                        bounce2_color += hit.color;
+                        bounce2_falloff = (1.0 / (1.0 + hit.t * hit.t));
+                        bounce2_mat_color = vec3(0.8);
+                    } else {
+                        bounce1_color += sky_color; 
+                    }
+                }
+#else
+                let bounce_query = scene_query(bray, max_ray_dist1);    
                 if bounce_query.hit.distance != F32_MAX && bounce_query.hit.distance > min_hit_dist {
                     let bray_hit_pos = bray.origin + bray.direction * bounce_query.hit.distance;
                     bounce2_mat_color = get_hit_material(bounce_query).color;
@@ -197,13 +222,14 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
                 } else if bounce_query.hit.distance == F32_MAX {
                     bounce1_color += sky_color;   
                 }
+#endif
             }
             // compensate for only tracing 50% of the time:
             bounce1_color *= 2.0;
             bounce2_color *= 2.0;
         }
     } else if query.hit.distance == F32_MAX {
-        cand.ray_hit_pos = ray.origin + ray.direction * 9999.9;
+        cand.ray_hit_pos = ray.origin + ray.direction * 99999.9;
         direct_color += sky_color;    
     }
 
@@ -242,15 +268,15 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
     }
 
     
-    //{
-    //    var hysterisis = 0.05;
-    //    var primary_ray_voxel = ivoxel_clamp(vec3<i32>(position_world_to_fvoxel(world_position)));
-    //    if !all(primary_ray_voxel == vec3(0)) {
-    //        let primary_cache_color = textureLoad(voxel_cache, primary_ray_voxel, 0);
-    //        let new_cache_color = max(mix(primary_cache_color.rgb, cand.color, hysterisis), vec3(0.0));
-    //        textureStore(voxel_cache_write, primary_ray_voxel, vec4(new_cache_color, f32(globals.time)));
-    //    }
-    //}
+    {
+        var hysterisis = 0.05;
+        var primary_ray_voxel = ivoxel_clamp(vec3<i32>(position_world_to_fvoxel(world_position)));
+        if !all(primary_ray_voxel == vec3(0)) {
+            let primary_cache_color = textureLoad(voxel_cache, primary_ray_voxel, 0);
+            let new_cache_color = max(mix(primary_cache_color.rgb, cand.color, hysterisis), vec3(0.0));
+            textureStore(voxel_cache_write, primary_ray_voxel, vec4(new_cache_color, f32(globals.time)));
+        }
+    }
 
     
 
@@ -263,49 +289,3 @@ fn candidates_update(invocation_id: vec3<u32>) -> Candidate {
     return cand;
 }
 
-/*
-@fragment
-fn fragment_primary_rays(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
-    let depth = prepass_depth(vec4<f32>(in.position.xy, 0.0, 0.0), 0u);
-    let frag_coord = vec4(in.position.xy, depth, 0.0);
-    let ifrag_coord = vec2<i32>(frag_coord.xy);
-    let ufrag_coord = vec2<u32>(frag_coord.xy);
-    let screen_uv = frag_coord_to_uv(in.position.xy);
-    let ray_start_ndc = frag_coord_to_ndc(frag_coord);
-
-    let surface_normal = normalize(prepass_normal(vec4<f32>(in.position.xy, 0.0, 0.0), 0u));
-
-    var col = textureSample(screen_tex, texture_sampler, screen_uv);
-
-    let ray = get_screen_ray(screen_uv);
-
-    let query = scene_query(ray);
-
-    if query.hit.distance != F32_MAX {
-        var normal = vec3(0.0);
-
-        var instance: InstanceData;
-        var color: vec3<f32>;
-        if query.static_tlas {
-            instance = static_mesh_instance_buffer[query.hit.instance_idx];
-            color = static_material_instance_buffer[query.hit.instance_idx].color;
-        } else {
-            instance = dynamic_mesh_instance_buffer[query.hit.instance_idx];
-            color = dynamic_material_instance_buffer[query.hit.instance_idx].color;
-        }
-        normal = get_surface_normal(instance, query.hit);
-        
-
-        col = vec4(color, 1.0);//vec4(vec3(normal), 1.0);
-    } else {
-        col = vec4(0.0);    
-    }
-
-    col = print_value(frag_coord.xy, col, 0, f32(settings.fps));
-    col = print_value(frag_coord.xy, col, 1, f32(settings.frame));
-    col = print_value(frag_coord.xy, col, 2, f32(arrayLength(&dynamic_tlas_buffer)));
-    col = print_value(frag_coord.xy, col, 3, f32(arrayLength(&static_tlas_buffer)));
-
-    return col;
-}
-*/

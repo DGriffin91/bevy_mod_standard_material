@@ -165,15 +165,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
             var new_weight = gr * dist_falloff * brdf * f32(!st.backface) * f32(st.hit) * st.derate;
             new_weight = max(new_weight, 0.0);
 
-            probe.w_sum += new_weight;
-
-            var threshold = new_weight / w_sum;
-
-            if i == 0u && (probe.M == 0u || ray_hit_pos.x == F32_MAX) {
-                threshold = 1.0;
-            }
-
-            probe_update(&probe, urand.z, new_weight, st.pos, st.color)
+            probe_update(&probe, urand.z, new_weight, st.pos, st.color);
 
             {
                 let probe_dist_falloff = saturate(max_dist - probe_to_cand_distance) + 1.0;
@@ -185,7 +177,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
             }
         }
 
-        M += 1u;
+        probe.M += 1u;
     }
 #endif //RAY_MARCH
 
@@ -194,7 +186,7 @@ fn ssgi_restir(ifrag_coord: vec2<i32>, frag_coord: vec4<f32>, pbr: PbrInput, sam
         let pt_samples = 4u;
         var candidates_radius = 7.0 * max(ssao_focus, 0.2);
         let path_trace_image_dims = vec2<f32>(textureDimensions(path_trace_image).xy);
-        let pt_max_dist = 40.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
+        let pt_max_dist = 80.0 * pixel_radius * mix(0.5, 1.0, ssao_focus);
         let coplanar_max_dist = 300.0 * pixel_radius;
         for (var i = 0u; i < pt_samples; i+=1u) {
             var max_dist = pt_max_dist;

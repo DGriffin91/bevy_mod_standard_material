@@ -57,20 +57,20 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let last_world_cache = textureLoad(voxel_cache, vec3<i32>(position_world_to_fvoxel(world_position)), 0);
 
     
-    let path_trace_image_dims = vec2<f32>(textureDimensions(path_trace_image).xy);
-    let path_trace_coord = vec2<i32>(in.uv * path_trace_image_dims);
-    let path_trace_data = textureLoad(path_trace_image, path_trace_coord, 0u, 0);
-    //let hit = march_voxel_grid(view.world_position.xyz, V, 512u, 1u, 1000.0);
+    //let path_trace_image_dims = vec2<f32>(textureDimensions(path_trace_image).xy);
+    //let path_trace_coord = vec2<i32>(in.uv * path_trace_image_dims);
+    //let path_trace_data = textureLoad(path_trace_image, path_trace_coord, 0u, 0);
+    //let hit = march_voxel_grid(view.world_position.xyz, V, 512u, 1u, 0.1);
     //var col = hit.color;
     //if hit.t < 0.0 {
     //    col = frame_col.rgb;
     //}
     
 
-    //return frame_col;
-    //return vec4(vec3(frame_col.rgb), 1.0);
+    //return vec4(vec3(col.rgb), 1.0);
+    return vec4(vec3(frame_col.rgb), 1.0);
     //return vec4(vec3(f32(ray_hit_pos.w)), 1.0);
-    return vec4(path_trace_data.rgb, 1.0);
+    //return vec4(path_trace_data.rgb, 1.0);
     //return vec4(vec3(last_world_cache.rgb), 1.0);
     //return vec4(closest_motion_vector, 0.0, 1.0);
 }

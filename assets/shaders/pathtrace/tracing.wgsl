@@ -162,7 +162,7 @@ fn intersects_triangle(ray: Ray, p1: vec3<f32>, p2: vec3<f32>, p3: vec3<f32>) ->
 }
 
 // just check if the ray intersects a plane in the aabb with the normal of the tri
-fn traverse_blas_fast(instance: MeshData, ray: Ray, min_dist: f32,
+fn traverse_blas_fast(instance: MeshData, ray: Ray, min_dist: f32, any_hit: bool,
 #ifdef RT_STATS
     stats: ptr<function, Stats>
 #endif
@@ -182,11 +182,13 @@ fn traverse_blas_fast(instance: MeshData, ray: Ray, min_dist: f32,
             var normal = blas.tri_nor;
             // TODO improve accuracy with distance to plane along normal (stored in normal.w)
             let t = intersects_plane(ray, (last_aabb_min + last_aabb_max) / 2.0, normal.xyz);
-            if  t > aabb_inter.x - 0.005 && t < aabb_inter.y + 0.005 && t < min_dist {
-                hit.distance = t;
-                hit.triangle_idx = triangle_idx;
-                hit.uv = vec2(0.5, 0.5);
-                min_dist = min(min_dist, hit.distance);
+            if t > aabb_inter.x - 0.005 && t < aabb_inter.y + 0.005 {
+                if t < min_dist || (any_hit && t < F32_MAX) {
+                    hit.distance = t;
+                    hit.triangle_idx = triangle_idx;
+                    hit.uv = vec2(0.5, 0.5);
+                    min_dist = min(min_dist, hit.distance);
+                }
             }
             // Exit the current node.
             next_idx = blas.exit_idx;
@@ -208,7 +210,7 @@ fn traverse_blas_fast(instance: MeshData, ray: Ray, min_dist: f32,
     return hit;
 }
 
-fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32,
+fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32, any_hit: bool,
 #ifdef RT_STATS
     stats: ptr<function, Stats>
 #endif
@@ -233,6 +235,10 @@ fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32,
 
             // vert order is acb?
             let intr = intersects_triangle(ray, p1, p3, p2);
+            if any_hit && intr.distance < F32_MAX {
+                hit.distance = 0.0;
+                return hit;
+            }
             if intr.distance < min_dist {
                 hit.distance = intr.distance;
                 hit.triangle_idx = triangle_idx;
@@ -271,16 +277,18 @@ fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32,
     return hit;
 }
 
-fn scene_query(ray: Ray) -> SceneQuery {
+fn scene_query(ray: Ray, max_ray_dist: f32) -> SceneQuery {
+    var max_ray_dist = clamp(max_ray_dist, 0.0, F32_MAX);
 #ifdef RT_STATS
     var stats = stats_new();
 #endif
-    let hit_static = static_traverse_tlas(ray, F32_MAX,
+    let hit_static = static_traverse_tlas(ray, max_ray_dist, false,
 #ifdef RT_STATS
     &stats
 #endif
-    );
-    let hit_dynamic = dynamic_traverse_tlas(ray, hit_static.distance,
+    ); 
+    max_ray_dist = clamp(hit_static.distance, 0.0, max_ray_dist);
+    let hit_dynamic = dynamic_traverse_tlas(ray, max_ray_dist, false,
 #ifdef RT_STATS
     &stats
 #endif
@@ -298,6 +306,31 @@ fn scene_query(ray: Ray) -> SceneQuery {
     query.stats = stats;
 #endif
     return query;
+}
+
+fn scene_query_any_hit(ray: Ray, max_ray_dist: f32) -> bool {
+    var max_ray_dist = clamp(max_ray_dist, 0.0, F32_MAX);
+#ifdef RT_STATS
+    var stats = stats_new();
+#endif
+    let hit_static = static_traverse_tlas(ray, max_ray_dist, true,
+#ifdef RT_STATS
+    &stats
+#endif
+    ); 
+    if hit_static.distance < F32_MAX {
+        return true;
+    }
+    max_ray_dist = clamp(hit_static.distance, 0.0, max_ray_dist);
+    let hit_dynamic = dynamic_traverse_tlas(ray, max_ray_dist, true,
+#ifdef RT_STATS
+    &stats
+#endif
+    );
+    if hit_dynamic.distance < F32_MAX {
+        return true;
+    }
+    return false;
 }
 
 // Inefficient, don't use this if getting more than normal.
