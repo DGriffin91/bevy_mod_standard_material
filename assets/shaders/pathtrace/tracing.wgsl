@@ -42,6 +42,42 @@ fn vis_stat(x: f32, step_value: f32) -> vec3<f32> {
     return col;
 }
 
+
+
+// https://developer.nvidia.com/blog/profiling-dxr-shaders-with-timer-instrumentation/
+fn temperature(x: f32, scale: f32) -> vec3<f32> {
+
+    // TODO with array() syntax got error:
+    // The expression [102] may only be indexed by a constant
+    var c: array<vec3<f32>, 10>;
+    c[0] = vec3(   0.0/255.0,   2.0/255.0,  91.0/255.0 );
+    c[1] = vec3(   0.0/255.0, 108.0/255.0, 251.0/255.0 );
+    c[2] = vec3(   0.0/255.0, 221.0/255.0, 221.0/255.0 );
+    c[3] = vec3(  51.0/255.0, 221.0/255.0,   0.0/255.0 );
+    c[4] = vec3( 255.0/255.0, 252.0/255.0,   0.0/255.0 );
+    c[5] = vec3( 255.0/255.0, 180.0/255.0,   0.0/255.0 );
+    c[6] = vec3( 255.0/255.0, 104.0/255.0,   0.0/255.0 );
+    c[7] = vec3( 226.0/255.0,  22.0/255.0,   0.0/255.0 );
+    c[8] = vec3( 191.0/255.0,   0.0/255.0,  83.0/255.0 );
+    c[9] = vec3( 145.0/255.0,   0.0/255.0,  65.0/255.0 );
+
+
+    let s = x / scale;
+
+    var cur = select(9, i32(s), i32(s) <= 9);
+    var prv = select(0, cur - 1, cur >= 1);
+    var nxt = select(9, cur + 1, cur < 9);
+
+    let blur = 0.8;
+
+    let wc = smoothstep( f32(cur)-blur, f32(cur)+blur, s ) * (1.0 - smoothstep(f32(cur+1)-blur, f32(cur+1)+blur, s) );
+    let wp = 1.0 - smoothstep( f32(cur)-blur, f32(cur)+blur, s );
+    let wn = smoothstep( f32(cur+1)-blur, f32(cur+1)+blur, s );
+
+    let r = wc * c[cur] + wp * c[prv] + wn * c[nxt];
+    return saturate(r);
+}
+
 fn stats_new() -> Stats {
     var stats: Stats;
     stats.aabb_hit_tlas = 0u;
@@ -161,55 +197,6 @@ fn intersects_triangle(ray: Ray, p1: vec3<f32>, p2: vec3<f32>, p3: vec3<f32>) ->
     return result;
 }
 
-// just check if the ray intersects a plane in the aabb with the normal of the tri
-fn traverse_blas_fast(instance: MeshData, ray: Ray, min_dist: f32, any_hit: bool,
-#ifdef RT_STATS
-    stats: ptr<function, Stats>
-#endif
-) -> Hit {    
-    //TODO Should we start at 1 since we already tested aginst the first AABB in the TLAS?
-    var next_idx = 0; 
-    var hit: Hit;
-    hit.distance = F32_MAX;
-    var aabb_inter = vec2(0.0);
-    var last_aabb_min = vec3(0.0);
-    var last_aabb_max = vec3(0.0);
-    var min_dist = min(min_dist, F32_MAX);
-    while (next_idx < instance.blas_count) {
-        let blas = blas_buffer[next_idx + instance.blas_start];
-        if blas.entry_or_shape_idx < 0 {
-            let triangle_idx = (blas.entry_or_shape_idx + 1) * -3;
-            var normal = blas.tri_nor;
-            // TODO improve accuracy with distance to plane along normal (stored in normal.w)
-            let t = intersects_plane(ray, (last_aabb_min + last_aabb_max) / 2.0, normal.xyz);
-            if t > aabb_inter.x - 0.005 && t < aabb_inter.y + 0.005 {
-                if t < min_dist || (any_hit && t < F32_MAX) {
-                    hit.distance = t;
-                    hit.triangle_idx = triangle_idx;
-                    hit.uv = vec2(0.5, 0.5);
-                    min_dist = min(min_dist, hit.distance);
-                }
-            }
-            // Exit the current node.
-            next_idx = blas.exit_idx;
-        } else {
-            // If entry_index is not -1 and the AABB test passes, then
-            // proceed to the node in entry_index (which goes down the bvh branch).
-
-            // If entry_index is not -1 and the AABB test fails, then
-            // proceed to the node in exit_index (which defines the next untested partition).
-            last_aabb_min = blas.aabb_min;
-            last_aabb_max = blas.aabb_max;
-            aabb_inter = intersects_aabb_seg(ray, blas.aabb_min, blas.aabb_max);
-            next_idx = select(blas.exit_idx, 
-                              blas.entry_or_shape_idx, 
-                              intersects_aabb(ray, blas.aabb_min.xyz, blas.aabb_max.xyz) < min_dist);
-        }
-            
-    }
-    return hit;
-}
-
 fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32, any_hit: bool,
 #ifdef RT_STATS
     stats: ptr<function, Stats>
@@ -229,9 +216,9 @@ fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32, any_hit: bool,
             let ind1 = i32(index_buffer[triangle_idx + 0 + instance.vert_idx_start].idx);
             let ind2 = i32(index_buffer[triangle_idx + 1 + instance.vert_idx_start].idx);
             let ind3 = i32(index_buffer[triangle_idx + 2 + instance.vert_idx_start].idx);            
-            let p1 = vertex_buffer[ind1 + instance.vert_data_start].position;
-            let p2 = vertex_buffer[ind2 + instance.vert_data_start].position;
-            let p3 = vertex_buffer[ind3 + instance.vert_data_start].position;
+            let p1 = VertexData_unpack_pos(vertex_buffer[ind1 + instance.vert_data_start]);
+            let p2 = VertexData_unpack_pos(vertex_buffer[ind2 + instance.vert_data_start]);
+            let p3 = VertexData_unpack_pos(vertex_buffer[ind3 + instance.vert_data_start]);
 
             // vert order is acb?
             let intr = intersects_triangle(ray, p1, p3, p2);
@@ -261,11 +248,14 @@ fn traverse_blas(instance: MeshData, ray: Ray, min_dist: f32, any_hit: bool,
             // If entry_index is not -1 and the AABB test fails, then
             // proceed to the node in exit_index (which defines the next untested partition).
             
-            //let half_size = (blas.aabb_max.xyz - blas.aabb_min.xyz) * 0.5;
-            //if distance(ray.origin, blas.aabb_min.xyz + half_size) - length(half_size) < min_dist {
+            let aabb_minxy = unpack2x16float(blas.aabb_minxy);
+            let aabb_maxxy = unpack2x16float(blas.aabb_maxxy);
+            let aabb_z = unpack2x16float(blas.aabb_z);
+            let aabb_min = vec3(aabb_minxy, aabb_z.x);
+            let aabb_max = vec3(aabb_maxxy, aabb_z.y) + aabb_min;
             next_idx = select(blas.exit_idx, 
                               blas.entry_or_shape_idx, 
-                              intersects_aabb(ray, blas.aabb_min.xyz, blas.aabb_max.xyz) < min_dist);
+                              intersects_aabb(ray, aabb_min, aabb_max) < min_dist);
 #ifdef RT_STATS                  
                 (*stats).aabb_hit_blas += 1u;
 #endif
@@ -350,9 +340,9 @@ fn get_surface_normal(query: SceneQuery) -> vec3<f32> {
     let ind2 = i32(index_buffer[query.hit.triangle_idx + 1 + mesh_index_start].idx);
     let ind3 = i32(index_buffer[query.hit.triangle_idx + 2 + mesh_index_start].idx);
     
-    let a = vertex_buffer[ind1 + mesh_pos_start].normal;
-    let b = vertex_buffer[ind2 + mesh_pos_start].normal;
-    let c = vertex_buffer[ind3 + mesh_pos_start].normal;
+    let a = VertexData_unpack(vertex_buffer[ind1 + mesh_pos_start]).normal;
+    let b = VertexData_unpack(vertex_buffer[ind2 + mesh_pos_start]).normal;
+    let c = VertexData_unpack(vertex_buffer[ind3 + mesh_pos_start]).normal;
 
     // Barycentric Coordinates
     let u = query.hit.uv.x;
@@ -381,9 +371,9 @@ fn compute_tri_normal(query: SceneQuery) -> vec3<f32> {
     let ind2 = i32(index_buffer[query.hit.triangle_idx + 1 + mesh_index_start].idx);
     let ind3 = i32(index_buffer[query.hit.triangle_idx + 2 + mesh_index_start].idx);
     
-    let a = vertex_buffer[ind1 + mesh_pos_start].position;
-    let b = vertex_buffer[ind2 + mesh_pos_start].position;
-    let c = vertex_buffer[ind3 + mesh_pos_start].position;
+    let a = VertexData_unpack_pos(vertex_buffer[ind1 + mesh_pos_start]);
+    let b = VertexData_unpack_pos(vertex_buffer[ind2 + mesh_pos_start]);
+    let c = VertexData_unpack_pos(vertex_buffer[ind3 + mesh_pos_start]);
 
     let v1 = b - a;
     let v2 = c - a;

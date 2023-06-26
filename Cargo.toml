@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 bevy = { git = "https://github.com/DGriffin91/bevy", branch = "deferred", features = ["dds", "jpeg"] }
 bevy_coordinate_systems = { git = "https://github.com/DGriffin91/bevy_coordinate_systems" }
-bevy_mod_bvh = { path = "H:/dev/programming/rust/bevy/bevy_mod_bvh/bevy_mod_bvh" }
+bevy_mod_bvh = { git = "https://github.com/DGriffin91/bevy_mod_bvh" }
 bevy_hanabi = { path = "H:/dev/programming/rust/bevy/hanabi/11/bevy_hanabi", features = ["3d"] }
 bitflags = "2.3.2"
 

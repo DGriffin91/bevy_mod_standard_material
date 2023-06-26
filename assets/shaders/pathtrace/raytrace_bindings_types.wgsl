@@ -32,15 +32,15 @@ struct TraceSettings {
 @group(0) @binding(4)
 var<uniform> settings: TraceSettings;
 @group(0) @binding(5)
-var<storage> vertex_buffer: array<VertexData>;
+var<storage> vertex_buffer: array<VertexDataPacked>;
 @group(0) @binding(6)
 var<storage> index_buffer: array<VertexIndices>;
 @group(0) @binding(7)
-var<storage> blas_buffer: array<BVHData>;
+var<storage> blas_buffer: array<BLASBVHData>;
 @group(0) @binding(8)
-var<storage> static_tlas_buffer: array<BVHData>;
+var<storage> static_tlas_buffer: array<TLASBVHData>;
 @group(0) @binding(9)
-var<storage> dynamic_tlas_buffer: array<BVHData>;
+var<storage> dynamic_tlas_buffer: array<TLASBVHData>;
 @group(0) @binding(10)
 var<storage> static_mesh_instance_buffer: array<InstanceData>;
 @group(0) @binding(11)

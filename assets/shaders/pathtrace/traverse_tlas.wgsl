@@ -72,9 +72,11 @@ fn static_traverse_tlas(ray: Ray, min_dist: f32, any_hit: bool,
 
             // If entry_index is not -1 and the AABB test fails, then
             // proceed to the node in exit_index (which defines the next untested partition).
+            let aabb_min = tlas.aabb_min.xyz;
+            let aabb_max = tlas.aabb_max.xyz + aabb_min;
             next_idx = select(tlas.exit_idx, 
                               tlas.entry_or_shape_idx, 
-                              intersects_aabb(ray, tlas.aabb_min.xyz, tlas.aabb_max.xyz) < min_dist);   
+                              intersects_aabb(ray, aabb_min, aabb_max) < min_dist);   
 #ifdef RT_STATS                  
             (*stats).aabb_hit_tlas += 1u;
 #endif
@@ -149,9 +151,11 @@ fn dynamic_traverse_tlas(ray: Ray, min_dist: f32, any_hit: bool,
 
             // If entry_index is not -1 and the AABB test fails, then
             // proceed to the node in exit_index (which defines the next untested partition).
+            let aabb_min = tlas.aabb_min.xyz;
+            let aabb_max = tlas.aabb_max.xyz + aabb_min;
             next_idx = select(tlas.exit_idx, 
                               tlas.entry_or_shape_idx, 
-                              intersects_aabb(ray, tlas.aabb_min.xyz, tlas.aabb_max.xyz) < min_dist);   
+                              intersects_aabb(ray, aabb_min, aabb_max) < min_dist);   
 #ifdef RT_STATS                  
             (*stats).aabb_hit_tlas += 1u;
 #endif

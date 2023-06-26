@@ -81,8 +81,8 @@ fn main() {
         .add_plugin(HanabiPlugin)
         //-----------
         //.add_plugin(BistroPlugin)
-        .add_plugin(KitchenPlugin)
-        //.add_plugin(SponzaPlugin)
+        //.add_plugin(KitchenPlugin)
+        .add_plugin(SponzaPlugin)
         //.add_plugin(HelmetScenePlugin)
         //.add_plugin(SphereScenePlugin)
         //-----------
