@@ -3,7 +3,7 @@ use bevy::{
         MaterialPipeline, MaterialPipelineKey, StandardMaterialFlags, PBR_PREPASS_SHADER_HANDLE,
     },
     prelude::*,
-    reflect::{FromReflect, Reflect, TypeUuid},
+    reflect::{Reflect, TypeUuid},
     render::{
         mesh::MeshVertexBufferLayout,
         render_asset::RenderAssets,
@@ -19,10 +19,10 @@ use bevy::{
 /// <https://google.github.io/filament/Material%20Properties.pdf>.
 ///
 /// May be created directly from a [`Color`] or an [`Image`].
-#[derive(AsBindGroup, Reflect, FromReflect, Debug, Clone, TypeUuid)]
+#[derive(AsBindGroup, Reflect, Debug, Clone, TypeUuid)]
 #[uuid = "e65799f2-923e-4548-8879-be574f9db988"]
-#[bind_group_data(CustomStandardMaterialKey)]
-#[uniform(0, CustomStandardMaterialUniform)]
+#[bind_group_data(StandardMaterialKey)]
+#[uniform(0, StandardMaterialUniform)]
 #[reflect(Default, Debug)]
 pub struct CustomStandardMaterial {
     /// The color of the surface of the material before lighting.
@@ -172,7 +172,7 @@ pub struct CustomStandardMaterial {
     /// This is usually generated and stored automatically ("baked") by 3D-modelling software.
     ///
     /// Typically, steep concave parts of a model (such as the armpit of a shirt) are darker,
-    /// because they have little exposed to light.
+    /// because they have little exposure to light.
     /// An occlusion map specifies those parts of the model that light doesn't reach well.
     ///
     /// The material will be less lit in places where this texture is dark.
@@ -235,6 +235,84 @@ pub struct CustomStandardMaterial {
     ///
     /// [z-fighting]: https://en.wikipedia.org/wiki/Z-fighting
     pub depth_bias: f32,
+
+    /// The depth map used for [parallax mapping].
+    ///
+    /// It is a greyscale image where white represents bottom and black the top.
+    /// If this field is set, bevy will apply [parallax mapping].
+    /// Parallax mapping, unlike simple normal maps, will move the texture
+    /// coordinate according to the current perspective,
+    /// giving actual depth to the texture.
+    ///
+    /// The visual result is similar to a displacement map,
+    /// but does not require additional geometry.
+    ///
+    /// Use the [`parallax_depth_scale`] field to control the depth of the parallax.
+    ///
+    /// ## Limitations
+    ///
+    /// - It will look weird on bent/non-planar surfaces.
+    /// - The depth of the pixel does not reflect its visual position, resulting
+    ///   in artifacts for depth-dependent features such as fog or SSAO.
+    /// - For the same reason, the the geometry silhouette will always be
+    ///   the one of the actual geometry, not the parallaxed version, resulting
+    ///   in awkward looks on intersecting parallaxed surfaces.
+    ///
+    /// ## Performance
+    ///
+    /// Parallax mapping requires multiple texture lookups, proportional to
+    /// [`max_parallax_layer_count`], which might be costly.
+    ///
+    /// Use the [`parallax_mapping_method`] and [`max_parallax_layer_count`] fields
+    /// to tweak the shader, trading graphical quality for performance.
+    ///
+    /// To improve performance, set your `depth_map`'s [`Image::sampler_descriptor`]
+    /// filter mode to `FilterMode::Nearest`, as [this paper] indicates, it improves
+    /// performance a bit.
+    ///
+    /// To reduce artifacts, avoid steep changes in depth, blurring the depth
+    /// map helps with this.
+    ///
+    /// Larger depth maps haves a disproportionate performance impact.
+    ///
+    /// [this paper]: https://www.diva-portal.org/smash/get/diva2:831762/FULLTEXT01.pdf
+    /// [parallax mapping]: https://en.wikipedia.org/wiki/Parallax_mapping
+    /// [`parallax_depth_scale`]: StandardMaterial::parallax_depth_scale
+    /// [`parallax_mapping_method`]: StandardMaterial::parallax_mapping_method
+    /// [`max_parallax_layer_count`]: StandardMaterial::max_parallax_layer_count
+    #[texture(11)]
+    #[sampler(12)]
+    pub depth_map: Option<Handle<Image>>,
+
+    /// How deep the offset introduced by the depth map should be.
+    ///
+    /// Default is `0.1`, anything over that value may look distorted.
+    /// Lower values lessen the effect.
+    ///
+    /// The depth is relative to texture size. This means that if your texture
+    /// occupies a surface of `1` world unit, and `parallax_depth_scale` is `0.1`, then
+    /// the in-world depth will be of `0.1` world units.
+    /// If the texture stretches for `10` world units, then the final depth
+    /// will be of `1` world unit.
+    pub parallax_depth_scale: f32,
+
+    /// Which parallax mapping method to use.
+    ///
+    /// We recommend that all objects use the same [`ParallaxMappingMethod`], to avoid
+    /// duplicating and running two shaders.
+    pub parallax_mapping_method: ParallaxMappingMethod,
+
+    /// In how many layers to split the depth maps for parallax mapping.
+    ///
+    /// If you are seeing jaggy edges, increase this value.
+    /// However, this incurs a performance cost.
+    ///
+    /// Dependent on the situation, switching to [`ParallaxMappingMethod::Relief`]
+    /// and keeping this value low might have better performance than increasing the
+    /// layer count while using [`ParallaxMappingMethod::Occlusion`].
+    ///
+    /// Default is `16.0`.
+    pub max_parallax_layer_count: f32,
 }
 
 impl Default for CustomStandardMaterial {
@@ -264,6 +342,10 @@ impl Default for CustomStandardMaterial {
             fog_enabled: true,
             alpha_mode: AlphaMode::Opaque,
             depth_bias: 0.0,
+            depth_map: None,
+            parallax_depth_scale: 0.1,
+            max_parallax_layer_count: 16.0,
+            parallax_mapping_method: ParallaxMappingMethod::Occlusion,
         }
     }
 }
@@ -293,7 +375,7 @@ impl From<Handle<Image>> for CustomStandardMaterial {
 
 /// The GPU representation of the uniform data of a [`StandardMaterial`].
 #[derive(Clone, Default, ShaderType)]
-pub struct CustomStandardMaterialUniform {
+pub struct StandardMaterialUniform {
     /// Doubles as diffuse albedo for non-metallic, specular for metallic and a mix for everything
     /// in between.
     pub base_color: Vec4,
@@ -313,13 +395,20 @@ pub struct CustomStandardMaterialUniform {
     /// When the alpha mode mask flag is set, any base color alpha above this cutoff means fully opaque,
     /// and any below means fully transparent.
     pub alpha_cutoff: f32,
+    /// The depth of the [`StandardMaterial::depth_map`] to apply.
+    pub parallax_depth_scale: f32,
+    /// In how many layers to split the depth maps for Steep parallax mapping.
+    ///
+    /// If your `parallax_depth_scale` is >0.1 and you are seeing jaggy edges,
+    /// increase this value. However, this incurs a performance cost.
+    pub max_parallax_layer_count: f32,
+    /// Using [`ParallaxMappingMethod::Relief`], how many additional
+    /// steps to use at most to find the depth value.
+    pub max_relief_mapping_search_steps: u32,
 }
 
-impl AsBindGroupShaderType<CustomStandardMaterialUniform> for CustomStandardMaterial {
-    fn as_bind_group_shader_type(
-        &self,
-        images: &RenderAssets<Image>,
-    ) -> CustomStandardMaterialUniform {
+impl AsBindGroupShaderType<StandardMaterialUniform> for CustomStandardMaterial {
+    fn as_bind_group_shader_type(&self, images: &RenderAssets<Image>) -> StandardMaterialUniform {
         let mut flags = StandardMaterialFlags::NONE;
         if self.base_color_texture.is_some() {
             flags |= StandardMaterialFlags::BASE_COLOR_TEXTURE;
@@ -341,6 +430,9 @@ impl AsBindGroupShaderType<CustomStandardMaterialUniform> for CustomStandardMate
         }
         if self.fog_enabled {
             flags |= StandardMaterialFlags::FOG_ENABLED;
+        }
+        if self.depth_map.is_some() {
+            flags |= StandardMaterialFlags::DEPTH_MAP;
         }
         let has_normal_map = self.normal_map_texture.is_some();
         if has_normal_map {
@@ -374,7 +466,7 @@ impl AsBindGroupShaderType<CustomStandardMaterialUniform> for CustomStandardMate
             AlphaMode::Multiply => flags |= StandardMaterialFlags::ALPHA_MODE_MULTIPLY,
         };
 
-        CustomStandardMaterialUniform {
+        StandardMaterialUniform {
             base_color: self.base_color.as_linear_rgba_f32().into(),
             emissive: self.emissive.as_linear_rgba_f32().into(),
             roughness: self.perceptual_roughness,
@@ -382,23 +474,41 @@ impl AsBindGroupShaderType<CustomStandardMaterialUniform> for CustomStandardMate
             reflectance: self.reflectance,
             flags: flags.bits(),
             alpha_cutoff,
+            parallax_depth_scale: self.parallax_depth_scale,
+            max_parallax_layer_count: self.max_parallax_layer_count,
+            max_relief_mapping_search_steps: parallax_mapping_method_max_steps(
+                self.parallax_mapping_method,
+            ),
         }
     }
 }
 
+pub fn parallax_mapping_method_max_steps(p: ParallaxMappingMethod) -> u32 {
+    match p {
+        ParallaxMappingMethod::Occlusion => 0,
+        ParallaxMappingMethod::Relief { max_steps } => max_steps,
+    }
+}
+
+/// The pipeline key for [`StandardMaterial`].
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct CustomStandardMaterialKey {
+pub struct StandardMaterialKey {
     normal_map: bool,
     cull_mode: Option<Face>,
     depth_bias: i32,
+    relief_mapping: bool,
 }
 
-impl From<&CustomStandardMaterial> for CustomStandardMaterialKey {
+impl From<&CustomStandardMaterial> for StandardMaterialKey {
     fn from(material: &CustomStandardMaterial) -> Self {
-        CustomStandardMaterialKey {
+        StandardMaterialKey {
             normal_map: material.normal_map_texture.is_some(),
             cull_mode: material.cull_mode,
             depth_bias: material.depth_bias as i32,
+            relief_mapping: matches!(
+                material.parallax_mapping_method,
+                ParallaxMappingMethod::Relief { .. }
+            ),
         }
     }
 }
@@ -410,11 +520,14 @@ impl Material for CustomStandardMaterial {
         _layout: &MeshVertexBufferLayout,
         key: MaterialPipelineKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        if key.bind_group_data.normal_map {
-            if let Some(fragment) = descriptor.fragment.as_mut() {
-                fragment
-                    .shader_defs
-                    .push("STANDARDMATERIAL_NORMAL_MAP".into());
+        if let Some(fragment) = descriptor.fragment.as_mut() {
+            let shader_defs = &mut fragment.shader_defs;
+
+            if key.bind_group_data.normal_map {
+                shader_defs.push("STANDARDMATERIAL_NORMAL_MAP".into());
+            }
+            if key.bind_group_data.relief_mapping {
+                shader_defs.push("RELIEF_MAPPING".into());
             }
         }
         descriptor.primitive.cull_mode = key.bind_group_data.cull_mode;

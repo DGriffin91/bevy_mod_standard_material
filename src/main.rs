@@ -2,9 +2,10 @@
 
 mod pbr_material;
 
-use std::f32::consts::*;
+use std::{f32::consts::*, time::Duration};
 
 use bevy::{
+    asset::ChangeWatcher,
     pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
 };
@@ -18,13 +19,12 @@ fn main() {
         })
         .insert_resource(DirectionalLightShadowMap { size: 4096 })
         .add_plugins(DefaultPlugins.set(AssetPlugin {
-            watch_for_changes: true,
+            watch_for_changes: ChangeWatcher::with_delay(Duration::from_millis(200)),
             ..default()
         }))
-        .add_plugin(MaterialPlugin::<CustomStandardMaterial>::default())
-        .add_startup_system(setup)
-        .add_system(animate_light_direction)
-        .add_system(swap_standard_material)
+        .add_plugins(MaterialPlugin::<CustomStandardMaterial>::default())
+        .add_systems(Startup, setup)
+        .add_systems(Update, (animate_light_direction, swap_standard_material))
         .run();
 }
 
@@ -109,6 +109,10 @@ fn swap_standard_material(
                 fog_enabled: material.fog_enabled,
                 alpha_mode: material.alpha_mode,
                 depth_bias: material.depth_bias,
+                depth_map: material.depth_map.clone(),
+                parallax_depth_scale: material.parallax_depth_scale,
+                parallax_mapping_method: material.parallax_mapping_method,
+                max_parallax_layer_count: material.max_parallax_layer_count,
             });
             for (entity, entity_mat_h) in entites.iter() {
                 if entity_mat_h == handle {

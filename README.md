@@ -1,6 +1,6 @@
 # Example of Bevy's standard material defined externally
 
-For use with bevy 0.10
+For use with bevy 0.11
 
 See for reference:
 https://github.com/bevyengine/bevy/blob/main/crates/bevy_pbr/src/pbr_material.rs
