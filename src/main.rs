@@ -4,7 +4,11 @@ mod pbr_material;
 
 use std::{f32::consts::*, time::Duration};
 
-use bevy::{asset::ChangeWatcher, pbr::CascadeShadowConfigBuilder, prelude::*};
+use bevy::{
+    asset::ChangeWatcher,
+    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    prelude::*,
+};
 use pbr_material::CustomStandardMaterial;
 
 fn main() {
@@ -13,6 +17,7 @@ fn main() {
             color: Color::WHITE,
             brightness: 1.0 / 5.0f32,
         })
+        .insert_resource(DirectionalLightShadowMap { size: 4096 })
         .add_plugins(DefaultPlugins.set(AssetPlugin {
             watch_for_changes: ChangeWatcher::with_delay(Duration::from_millis(200)),
             ..default()
@@ -26,10 +31,6 @@ fn main() {
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
         Camera3dBundle {
-            camera: Camera {
-                hdr: true,
-                ..default()
-            },
             transform: Transform::from_xyz(0.7, 0.7, 1.0)
                 .looking_at(Vec3::new(0.0, 0.3, 0.0), Vec3::Y),
             ..default()
@@ -89,8 +90,30 @@ fn swap_standard_material(
             AssetEvent::Created { handle } => handle,
             _ => continue,
         };
-        if let Some(_material) = standard_materials.get(handle) {
-            let custom_mat_h = custom_materials.add(CustomStandardMaterial {});
+        if let Some(material) = standard_materials.get(handle) {
+            let custom_mat_h = custom_materials.add(CustomStandardMaterial {
+                base_color: material.base_color,
+                base_color_texture: material.base_color_texture.clone(),
+                emissive: material.emissive,
+                emissive_texture: material.emissive_texture.clone(),
+                perceptual_roughness: material.perceptual_roughness,
+                metallic: material.metallic,
+                metallic_roughness_texture: material.metallic_roughness_texture.clone(),
+                reflectance: material.reflectance,
+                normal_map_texture: material.normal_map_texture.clone(),
+                flip_normal_map_y: material.flip_normal_map_y,
+                occlusion_texture: material.occlusion_texture.clone(),
+                double_sided: material.double_sided,
+                cull_mode: material.cull_mode,
+                unlit: material.unlit,
+                fog_enabled: material.fog_enabled,
+                alpha_mode: material.alpha_mode,
+                depth_bias: material.depth_bias,
+                depth_map: material.depth_map.clone(),
+                parallax_depth_scale: material.parallax_depth_scale,
+                parallax_mapping_method: material.parallax_mapping_method,
+                max_parallax_layer_count: material.max_parallax_layer_count,
+            });
             for (entity, entity_mat_h) in entites.iter() {
                 if entity_mat_h == handle {
                     let mut ecmds = commands.entity(entity);
