@@ -1,4 +1,9 @@
-# Example of Bevy's standard material defined externally
+# PCF is now included in bevy 0.12: 
+https://bevyengine.org/news/bevy-0-12/#pcf-shadow-filtering
+
+
+
+Example of Bevy's standard material defined externally
 
 For use with bevy 0.11
 
