@@ -1,41 +1,62 @@
-#define_import_path bevy_pbr::fragment
+#import bevy_pbr::{
+    pbr_functions::alpha_discard,
+    pbr_fragment::pbr_input_from_standard_material,
+    pbr_types::pbr_input_new,
+}
 
-#import bevy_pbr::pbr_functions as pbr_functions
-#import bevy_pbr::pbr_bindings as pbr_bindings
-#import bevy_pbr::pbr_types as pbr_types
-#import bevy_pbr::prepass_utils
-
-#import bevy_pbr::mesh_vertex_output       MeshVertexOutput
-#import bevy_pbr::mesh_bindings            mesh
-#import bevy_pbr::mesh_view_bindings       view, fog, screen_space_ambient_occlusion_texture
-#import bevy_pbr::mesh_view_types          FOG_MODE_OFF
-#import bevy_core_pipeline::tonemapping    screen_space_dither, powsafe, tone_mapping
-#import bevy_pbr::parallax_mapping         parallaxed_uv
-
-#import bevy_pbr::prepass_utils
-
-#import bevy_pbr::gtao_utils gtao_multibounce
+#ifdef PREPASS_PIPELINE
+#import bevy_pbr::{
+    prepass_io::{VertexOutput, FragmentOutput},
+    pbr_deferred_functions::deferred_output,
+}
+#else
+#import bevy_pbr::{
+    forward_io::{VertexOutput, FragmentOutput},
+    pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
+    pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
+}
+#endif
 
 
 // For PbrInput and StandardMaterial fields see:
-// https://github.com/bevyengine/bevy/blob/v0.11.0/crates/bevy_pbr/src/render/pbr_functions.wgsl#L140
-// https://github.com/bevyengine/bevy/blob/v0.11.0/crates/bevy_pbr/src/render/pbr_types.wgsl#L3
+// https://github.com/bevyengine/bevy/blob/v0.12.0/crates/bevy_pbr/src/render/pbr_functions.wgsl
+// https://github.com/bevyengine/bevy/blob/v0.12.0/crates/bevy_pbr/src/render/pbr_types.wgsl
 
 @fragment
 fn fragment(
-    in: MeshVertexOutput,
+    in: VertexOutput,
     @builtin(front_facing) is_front: bool,
-) -> @location(0) vec4<f32> {
+) -> FragmentOutput {
+    // generate a PbrInput struct
+    var pbr_input = pbr_input_new();
+    pbr_input.frag_coord = in.position;
+    pbr_input.world_position = in.world_position;
+    pbr_input.world_normal = in.world_normal;
+    pbr_input.N = in.world_normal;
 
-    var pbr = pbr_functions::pbr_input_new();
-    pbr.frag_coord = in.position;
-    pbr.world_position = in.world_position;
-    pbr.world_normal = in.world_normal;
-    pbr.N = in.world_normal;
+    pbr_input.material.base_color = vec4(0.5, 0.5, 0.5, 1.0);
+    pbr_input.material.perceptual_roughness = 0.05;
 
-    pbr.material.base_color = vec4(0.5, 0.5, 0.5, 1.0);
-    pbr.material.perceptual_roughness = 0.05;
-    var output_color = pbr_functions::pbr(pbr);
+    // alpha discard
+    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
 
-    return output_color;
+#ifdef PREPASS_PIPELINE
+    // write the gbuffer, lighting pass id, and optionally normal and motion_vector textures
+    let out = deferred_output(in, pbr_input);
+#else
+    // in forward mode, we calculate the lit color immediately, and then apply some post-lighting effects here.
+    // in deferred mode the lit color and these effects will be calculated in the deferred lighting shader
+    var out: FragmentOutput;
+    if (pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
+        out.color = apply_pbr_lighting(pbr_input);
+    } else {
+        out.color = pbr_input.material.base_color;
+    }
+
+    // apply in-shader post processing (fog, alpha-premultiply, and also tonemapping, debanding if the camera is non-hdr)
+    // note this does not include fullscreen postprocessing effects like bloom.
+    out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+#endif
+
+    return out;
 }

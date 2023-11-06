@@ -1,6 +1,6 @@
 # Minimal PBR material
 
-For use with bevy 0.11
+For use with bevy 0.12
 
 See for reference:
 https://github.com/bevyengine/bevy/blob/main/crates/bevy_pbr/src/pbr_material.rs

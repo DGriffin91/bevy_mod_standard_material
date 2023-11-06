@@ -2,9 +2,9 @@
 
 mod pbr_material;
 
-use std::{f32::consts::*, time::Duration};
+use std::f32::consts::*;
 
-use bevy::{asset::ChangeWatcher, pbr::CascadeShadowConfigBuilder, prelude::*};
+use bevy::{pbr::CascadeShadowConfigBuilder, prelude::*};
 use pbr_material::CustomStandardMaterial;
 
 fn main() {
@@ -13,11 +13,10 @@ fn main() {
             color: Color::WHITE,
             brightness: 1.0 / 5.0f32,
         })
-        .add_plugins(DefaultPlugins.set(AssetPlugin {
-            watch_for_changes: ChangeWatcher::with_delay(Duration::from_millis(200)),
-            ..default()
-        }))
-        .add_plugins(MaterialPlugin::<CustomStandardMaterial>::default())
+        .add_plugins((
+            DefaultPlugins,
+            MaterialPlugin::<CustomStandardMaterial>::default(),
+        ))
         .add_systems(Startup, setup)
         .add_systems(Update, (animate_light_direction, swap_standard_material))
         .run();
@@ -84,15 +83,16 @@ fn swap_standard_material(
     standard_materials: Res<Assets<StandardMaterial>>,
     mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
 ) {
-    for event in material_events.iter() {
+    for event in material_events.read() {
         let handle = match event {
-            AssetEvent::Created { handle } => handle,
+            AssetEvent::Added { id } => id,
+            AssetEvent::LoadedWithDependencies { id } => id,
             _ => continue,
         };
-        if let Some(_material) = standard_materials.get(handle) {
+        if let Some(_material) = standard_materials.get(*handle) {
             let custom_mat_h = custom_materials.add(CustomStandardMaterial {});
             for (entity, entity_mat_h) in entites.iter() {
-                if entity_mat_h == handle {
+                if entity_mat_h.id() == *handle {
                     let mut ecmds = commands.entity(entity);
                     ecmds.remove::<Handle<StandardMaterial>>();
                     ecmds.insert(custom_mat_h.clone());

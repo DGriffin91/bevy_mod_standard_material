@@ -1,15 +1,17 @@
 use bevy::{
     prelude::*,
-    reflect::{TypePath, TypeUuid},
+    reflect::TypePath,
     render::render_resource::{AsBindGroup, ShaderRef},
 };
 
-#[derive(AsBindGroup, Debug, Clone, TypeUuid, TypePath)]
-#[uuid = "131792e1-f241-4dca-8f72-bc75ff12ebaa"]
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct CustomStandardMaterial {}
 
 impl Material for CustomStandardMaterial {
     fn fragment_shader() -> ShaderRef {
+        "shaders/pbr.wgsl".into()
+    }
+    fn deferred_fragment_shader() -> ShaderRef {
         "shaders/pbr.wgsl".into()
     }
 }
