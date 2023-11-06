@@ -2,10 +2,9 @@
 
 mod pbr_material;
 
-use std::{f32::consts::*, time::Duration};
+use std::f32::consts::*;
 
 use bevy::{
-    asset::ChangeWatcher,
     pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
 };
@@ -18,11 +17,10 @@ fn main() {
             brightness: 1.0 / 5.0f32,
         })
         .insert_resource(DirectionalLightShadowMap { size: 4096 })
-        .add_plugins(DefaultPlugins.set(AssetPlugin {
-            watch_for_changes: ChangeWatcher::with_delay(Duration::from_millis(200)),
-            ..default()
-        }))
-        .add_plugins(MaterialPlugin::<CustomStandardMaterial>::default())
+        .add_plugins((
+            DefaultPlugins,
+            MaterialPlugin::<CustomStandardMaterial>::default(),
+        ))
         .add_systems(Startup, setup)
         .add_systems(Update, (animate_light_direction, swap_standard_material))
         .run();
@@ -85,12 +83,13 @@ fn swap_standard_material(
     standard_materials: Res<Assets<StandardMaterial>>,
     mut custom_materials: ResMut<Assets<CustomStandardMaterial>>,
 ) {
-    for event in material_events.iter() {
+    for event in material_events.read() {
         let handle = match event {
-            AssetEvent::Created { handle } => handle,
+            AssetEvent::Added { id } => id,
+            AssetEvent::LoadedWithDependencies { id } => id,
             _ => continue,
         };
-        if let Some(material) = standard_materials.get(handle) {
+        if let Some(material) = standard_materials.get(*handle) {
             let custom_mat_h = custom_materials.add(CustomStandardMaterial {
                 base_color: material.base_color,
                 base_color_texture: material.base_color_texture.clone(),
@@ -113,9 +112,17 @@ fn swap_standard_material(
                 parallax_depth_scale: material.parallax_depth_scale,
                 parallax_mapping_method: material.parallax_mapping_method,
                 max_parallax_layer_count: material.max_parallax_layer_count,
+                diffuse_transmission: material.diffuse_transmission,
+                specular_transmission: material.specular_transmission,
+                thickness: material.thickness,
+                ior: material.ior,
+                attenuation_distance: material.attenuation_distance,
+                attenuation_color: material.attenuation_color,
+                opaque_render_method: material.opaque_render_method,
+                deferred_lighting_pass_id: material.deferred_lighting_pass_id,
             });
             for (entity, entity_mat_h) in entites.iter() {
-                if entity_mat_h == handle {
+                if entity_mat_h.id() == *handle {
                     let mut ecmds = commands.entity(entity);
                     ecmds.remove::<Handle<StandardMaterial>>();
                     ecmds.insert(custom_mat_h.clone());
