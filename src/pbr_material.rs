@@ -2,16 +2,14 @@ use bevy::asset::{Asset, Handle};
 use bevy::math::Vec4;
 use bevy::pbr::deferred::DEFAULT_PBR_DEFERRED_LIGHTING_PASS_ID;
 use bevy::pbr::{
-    MaterialPipeline, MaterialPipelineKey, OpaqueRendererMethod, StandardMaterialFlags,
-    PBR_PREPASS_SHADER_HANDLE,
+    AlphaMode, Material, MaterialPipeline, MaterialPipelineKey, OpaqueRendererMethod,
+    ParallaxMappingMethod, StandardMaterialFlags, PBR_PREPASS_SHADER_HANDLE, PBR_SHADER_HANDLE,
 };
 use bevy::reflect::{std_traits::ReflectDefault, Reflect};
 use bevy::render::{
     color::Color, mesh::MeshVertexBufferLayout, render_asset::RenderAssets, render_resource::*,
     texture::Image,
 };
-
-use bevy::prelude::*;
 
 /// A material with "standard" properties used in PBR lighting
 /// Standard property values with pictures here
@@ -466,6 +464,9 @@ pub struct CustomStandardMaterial {
     /// Default is `16.0`.
     pub max_parallax_layer_count: f32,
 
+    /// The exposure (brightness) level of the lightmap, if present.
+    pub lightmap_exposure: f32,
+
     /// Render method used for opaque materials. (Where `alpha_mode` is [`AlphaMode::Opaque`] or [`AlphaMode::Mask`])
     pub opaque_render_method: OpaqueRendererMethod,
 
@@ -517,6 +518,7 @@ impl Default for CustomStandardMaterial {
             depth_map: None,
             parallax_depth_scale: 0.1,
             max_parallax_layer_count: 16.0,
+            lightmap_exposure: 1.0,
             parallax_mapping_method: ParallaxMappingMethod::Occlusion,
             opaque_render_method: OpaqueRendererMethod::Auto,
             deferred_lighting_pass_id: DEFAULT_PBR_DEFERRED_LIGHTING_PASS_ID,
@@ -588,6 +590,8 @@ pub struct StandardMaterialUniform {
     /// If your `parallax_depth_scale` is >0.1 and you are seeing jaggy edges,
     /// increase this value. However, this incurs a performance cost.
     pub max_parallax_layer_count: f32,
+    /// The exposure (brightness) level of the lightmap, if present.
+    pub lightmap_exposure: f32,
     /// Using [`ParallaxMappingMethod::Relief`], how many additional
     /// steps to use at most to find the depth value.
     pub max_relief_mapping_search_steps: u32,
@@ -687,6 +691,7 @@ impl AsBindGroupShaderType<StandardMaterialUniform> for CustomStandardMaterial {
             alpha_cutoff,
             parallax_depth_scale: self.parallax_depth_scale,
             max_parallax_layer_count: self.max_parallax_layer_count,
+            lightmap_exposure: self.lightmap_exposure,
             max_relief_mapping_search_steps: parallax_mapping_method_max_steps(
                 self.parallax_mapping_method,
             ),
@@ -709,6 +714,8 @@ pub struct StandardMaterialKey {
     cull_mode: Option<Face>,
     depth_bias: i32,
     relief_mapping: bool,
+    diffuse_transmission: bool,
+    specular_transmission: bool,
 }
 
 impl From<&CustomStandardMaterial> for StandardMaterialKey {
@@ -721,62 +728,20 @@ impl From<&CustomStandardMaterial> for StandardMaterialKey {
                 material.parallax_mapping_method,
                 ParallaxMappingMethod::Relief { .. }
             ),
+            diffuse_transmission: material.diffuse_transmission > 0.0,
+            specular_transmission: material.specular_transmission > 0.0,
         }
     }
 }
 
 impl Material for CustomStandardMaterial {
-    fn specialize(
-        _pipeline: &MaterialPipeline<Self>,
-        descriptor: &mut RenderPipelineDescriptor,
-        _layout: &MeshVertexBufferLayout,
-        key: MaterialPipelineKey<Self>,
-    ) -> Result<(), SpecializedMeshPipelineError> {
-        if let Some(fragment) = descriptor.fragment.as_mut() {
-            let shader_defs = &mut fragment.shader_defs;
-
-            if key.bind_group_data.normal_map {
-                shader_defs.push("STANDARDMATERIAL_NORMAL_MAP".into());
-            }
-            if key.bind_group_data.relief_mapping {
-                shader_defs.push("RELIEF_MAPPING".into());
-            }
-        }
-        descriptor.primitive.cull_mode = key.bind_group_data.cull_mode;
-        if let Some(label) = &mut descriptor.label {
-            *label = format!("pbr_{}", *label).into();
-        }
-        if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
-            depth_stencil.bias.constant = key.bind_group_data.depth_bias;
-        }
-        Ok(())
-    }
-
-    fn prepass_fragment_shader() -> ShaderRef {
-        PBR_PREPASS_SHADER_HANDLE.into()
-    }
-
-    fn deferred_fragment_shader() -> ShaderRef {
-        "shaders/pbr.wgsl".into()
-    }
-
     fn fragment_shader() -> ShaderRef {
-        "shaders/pbr.wgsl".into()
+        PBR_SHADER_HANDLE.into()
     }
 
     #[inline]
     fn alpha_mode(&self) -> AlphaMode {
         self.alpha_mode
-    }
-
-    #[inline]
-    fn depth_bias(&self) -> f32 {
-        self.depth_bias
-    }
-
-    #[inline]
-    fn reads_view_transmission_texture(&self) -> bool {
-        self.specular_transmission > 0.0
     }
 
     #[inline]
@@ -794,5 +759,62 @@ impl Material for CustomStandardMaterial {
             }
             other => other,
         }
+    }
+
+    #[inline]
+    fn depth_bias(&self) -> f32 {
+        self.depth_bias
+    }
+
+    #[inline]
+    fn reads_view_transmission_texture(&self) -> bool {
+        self.specular_transmission > 0.0
+    }
+
+    fn prepass_fragment_shader() -> ShaderRef {
+        PBR_PREPASS_SHADER_HANDLE.into()
+    }
+
+    fn deferred_fragment_shader() -> ShaderRef {
+        PBR_SHADER_HANDLE.into()
+    }
+
+    fn specialize(
+        _pipeline: &MaterialPipeline<Self>,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayout,
+        key: MaterialPipelineKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        if let Some(fragment) = descriptor.fragment.as_mut() {
+            let shader_defs = &mut fragment.shader_defs;
+
+            if key.bind_group_data.normal_map {
+                shader_defs.push("STANDARD_MATERIAL_NORMAL_MAP".into());
+            }
+            if key.bind_group_data.relief_mapping {
+                shader_defs.push("RELIEF_MAPPING".into());
+            }
+
+            if key.bind_group_data.diffuse_transmission {
+                shader_defs.push("STANDARD_MATERIAL_DIFFUSE_TRANSMISSION".into());
+            }
+
+            if key.bind_group_data.specular_transmission {
+                shader_defs.push("STANDARD_MATERIAL_SPECULAR_TRANSMISSION".into());
+            }
+
+            if key.bind_group_data.diffuse_transmission || key.bind_group_data.specular_transmission
+            {
+                shader_defs.push("STANDARD_MATERIAL_SPECULAR_OR_DIFFUSE_TRANSMISSION".into());
+            }
+        }
+        descriptor.primitive.cull_mode = key.bind_group_data.cull_mode;
+        if let Some(label) = &mut descriptor.label {
+            *label = format!("pbr_{}", *label).into();
+        }
+        if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
+            depth_stencil.bias.constant = key.bind_group_data.depth_bias;
+        }
+        Ok(())
     }
 }

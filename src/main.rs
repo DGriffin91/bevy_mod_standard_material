@@ -36,6 +36,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         EnvironmentMapLight {
             diffuse_map: asset_server.load("environment_maps/pisa_diffuse_rgb9e5_zstd.ktx2"),
             specular_map: asset_server.load("environment_maps/pisa_specular_rgb9e5_zstd.ktx2"),
+            intensity: 1000.0,
         },
     ));
 
@@ -120,6 +121,7 @@ fn swap_standard_material(
                 attenuation_color: material.attenuation_color,
                 opaque_render_method: material.opaque_render_method,
                 deferred_lighting_pass_id: material.deferred_lighting_pass_id,
+                lightmap_exposure: material.lightmap_exposure,
             });
             for (entity, entity_mat_h) in entites.iter() {
                 if entity_mat_h.id() == *handle {
